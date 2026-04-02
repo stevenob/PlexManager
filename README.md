@@ -56,10 +56,10 @@ cp .env.example .env
 Edit `.env` with your values:
 
 ```env
-DISCORD_TOKEN=your_discord_bot_token
-TMDB_API_KEY=your_tmdb_api_key
-MEDIA_PATHS=/Volumes/Media/Movies,/Volumes/Media/TV Shows
-NOTIFICATION_CHANNEL_ID=123456789012345678
+DISCORD_TOKEN=your_discord_bot_token_here
+TMDB_API_KEY=your_tmdb_api_key_here
+MEDIA_PATHS=/path/to/movies,/path/to/tv/shows
+NOTIFICATION_CHANNEL_ID=your_channel_id_here
 ```
 
 ### 4. Run the bot
