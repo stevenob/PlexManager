@@ -74,6 +74,23 @@ class MediaScanner:
         # Compare against indexed paths
         indexed_paths = await self.db.get_all_paths()
 
+        # Guard: if scan found nothing but DB has records, the media paths
+        # are likely inaccessible (unmounted NAS, permissions). Skip removals
+        # to avoid wiping the entire database.
+        if not disk_paths and indexed_paths:
+            logger.warning(
+                "Scan found 0 files but database has %d records — "
+                "media paths may be inaccessible. Skipping removals.",
+                len(indexed_paths),
+            )
+            return {
+                "added": 0,
+                "removed": 0,
+                "unchanged": 0,
+                "total": len(indexed_paths),
+                "skipped": True,
+            }
+
         new_paths = disk_paths - indexed_paths
         deleted_paths = indexed_paths - disk_paths
         unchanged_paths = disk_paths & indexed_paths
