@@ -113,6 +113,18 @@ class MediaDatabase:
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute(_CREATE_MEDIA_FILES)
         await self._db.execute(_CREATE_WATCH_HISTORY)
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_type_title ON media_files (media_type, title)"
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_created_at ON media_files (created_at)"
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_show_title ON media_files (show_title)"
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_watch_history_id ON watch_history (id DESC)"
+        )
         await self._db.commit()
         logger.info("Database ready")
 
@@ -374,8 +386,6 @@ class MediaDatabase:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-        return [dict(row) for row in rows]
-
     async def get_random(
         self, media_type: str | None = None
     ) -> MediaFile | None:
@@ -468,41 +478,29 @@ class MediaDatabase:
 
     async def get_stats(self) -> dict:
         """Return aggregate statistics about the indexed library."""
-        db = self._conn
-
-        async with db.execute(
-            "SELECT COUNT(*) FROM media_files WHERE media_type = ?",
-            (MediaType.MOVIE.value,),
-        ) as cur:
-            total_movies = (await cur.fetchone())[0]  # type: ignore[index]
-
-        async with db.execute(
-            "SELECT COUNT(*) FROM media_files WHERE media_type = ?",
-            (MediaType.EPISODE.value,),
-        ) as cur:
-            total_episodes = (await cur.fetchone())[0]  # type: ignore[index]
-
-        async with db.execute(
-            "SELECT COUNT(DISTINCT show_title) FROM media_files WHERE media_type = ? AND show_title IS NOT NULL",
-            (MediaType.EPISODE.value,),
-        ) as cur:
-            total_shows = (await cur.fetchone())[0]  # type: ignore[index]
-
-        async with db.execute("SELECT COALESCE(SUM(size), 0) FROM media_files") as cur:
-            total_size = (await cur.fetchone())[0]  # type: ignore[index]
-
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        async with db.execute(
-            "SELECT COUNT(*) FROM media_files WHERE created_at >= ?", (week_ago,)
+        sql = """
+            SELECT
+                COALESCE(SUM(CASE WHEN media_type = ? THEN 1 ELSE 0 END), 0) AS total_movies,
+                COALESCE(SUM(CASE WHEN media_type = ? THEN 1 ELSE 0 END), 0) AS total_episodes,
+                COALESCE(COUNT(DISTINCT CASE WHEN media_type = ? AND show_title IS NOT NULL
+                    THEN show_title END), 0) AS total_shows,
+                COALESCE(SUM(size), 0) AS total_size,
+                COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS recent_count
+            FROM media_files
+        """
+        async with self._conn.execute(
+            sql,
+            (MediaType.MOVIE.value, MediaType.EPISODE.value, MediaType.EPISODE.value, week_ago),
         ) as cur:
-            recent_count = (await cur.fetchone())[0]  # type: ignore[index]
+            row = await cur.fetchone()
 
         stats = {
-            "total_movies": total_movies,
-            "total_episodes": total_episodes,
-            "total_shows": total_shows,
-            "total_size": total_size,
-            "recent_count": recent_count,
+            "total_movies": row[0],
+            "total_episodes": row[1],
+            "total_shows": row[2],
+            "total_size": row[3],
+            "recent_count": row[4],
         }
         logger.debug("Library stats: %s", stats)
         return stats
@@ -512,6 +510,16 @@ class MediaDatabase:
         async with self._conn.execute("SELECT path FROM media_files") as cursor:
             rows = await cursor.fetchall()
         return {row["path"] for row in rows}
+
+    async def get_watch_history(self, limit: int = 10) -> list[dict]:
+        """Return recent watch history events."""
+        async with self._conn.execute(
+            "SELECT path, event_type, timestamp, title, media_type "
+            "FROM watch_history ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     async def has_tmdb_metadata(self, path: str) -> bool:
         """Check whether the file at *path* already has TMDb metadata cached."""

@@ -28,13 +28,14 @@ class TMDbClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            timeout = aiohttp.ClientTimeout(total=15)
+            self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
     async def _request(
         self, endpoint: str, params: dict[str, Any] | None = None
     ) -> dict | None:
-        """Make a GET request to TMDb, handling rate-limits and errors."""
+        """Make a GET request to TMDb, handling rate-limits, 5xx, and errors."""
         url = f"{BASE_URL}{endpoint}"
         query: dict[str, Any] = {"api_key": self._api_key}
         if params:
@@ -60,6 +61,16 @@ class TMDbClient:
                             await asyncio.sleep(retry_after)
                             continue
 
+                        if resp.status >= 500:
+                            backoff = 2 ** attempt
+                            logger.warning(
+                                "TMDb server error %s for %s (attempt %d); "
+                                "retrying in %ss",
+                                resp.status, url, attempt + 1, backoff,
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+
                         logger.error(
                             "TMDb request failed: %s %s (attempt %d)",
                             resp.status,
@@ -67,10 +78,10 @@ class TMDbClient:
                             attempt + 1,
                         )
                         return None
-                except aiohttp.ClientError as exc:
+                except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                     logger.error("TMDb connection error: %s", exc)
                     if attempt < 2:
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(2 ** attempt)
                     else:
                         return None
 

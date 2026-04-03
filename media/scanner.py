@@ -51,8 +51,11 @@ class MediaScanner:
         # Discover files on disk
         disk_paths: set[str] = set()
         count = 0
+        def _walk_error(err: OSError) -> None:
+            logger.warning("Cannot access path during scan: %s", err)
+
         for media_path in self.media_paths:
-            for dirpath, dirnames, filenames in os.walk(media_path):
+            for dirpath, dirnames, filenames in os.walk(media_path, onerror=_walk_error):
                 # Skip hidden directories in-place so os.walk won't recurse
                 dirnames[:] = [d for d in dirnames if not d.startswith(".")]
                 for fname in filenames:
@@ -118,7 +121,8 @@ class MediaScanner:
         stat = os.stat(filepath)
         filename = os.path.basename(filepath)
         size = stat.st_size
-        created_at = datetime.fromtimestamp(stat.st_birthtime, tz=timezone.utc)
+        birth_ts = getattr(stat, "st_birthtime", None) or stat.st_ctime
+        created_at = datetime.fromtimestamp(birth_ts, tz=timezone.utc)
         modified_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
 
         parts = filepath.replace("\\", "/").split("/")

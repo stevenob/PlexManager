@@ -141,7 +141,7 @@ class NotificationsCog(commands.Cog):
 
         await interaction.response.defer()
 
-        async with self.bot.db._db.execute(
+        async with self.bot.db._conn.execute(
             "SELECT path, event_type, timestamp, title, media_type "
             "FROM watch_history ORDER BY id DESC LIMIT ?",
             (limit,),

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import logging.handlers
 import signal
 import sys
 
@@ -16,11 +17,21 @@ logger = logging.getLogger("plexmanager")
 def setup_logging() -> None:
     log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     level = getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter(log_format))
+
     root = logging.getLogger()
+    if root.handlers:
+        return
     root.setLevel(level)
-    root.addHandler(handler)
+
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(logging.Formatter(log_format))
+    root.addHandler(console)
+
+    file_handler = logging.handlers.RotatingFileHandler(
+        "plexmanager.log", maxBytes=5 * 1024 * 1024, backupCount=3
+    )
+    file_handler.setFormatter(logging.Formatter(log_format))
+    root.addHandler(file_handler)
 
 
 async def main() -> None:
@@ -47,6 +58,7 @@ async def main() -> None:
     bot.scanner = scanner
     bot.tmdb = tmdb
     bot.monitor = monitor
+    bot.media_paths = Config.MEDIA_PATHS
 
     # --- Extend the bot's setup_hook ---
     # The original hook loads cogs and syncs the command tree.
@@ -86,8 +98,12 @@ async def main() -> None:
         asyncio.get_running_loop().create_task(bot.close())
 
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _request_shutdown)
+    if sys.platform != "win32":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _request_shutdown)
+    else:
+        signal.signal(signal.SIGINT, lambda *_: _request_shutdown())
+        signal.signal(signal.SIGTERM, lambda *_: _request_shutdown())
 
     # --- Start the bot (blocks until bot.close() is called) ---
     try:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,8 @@ from discord.ext import commands
 
 if TYPE_CHECKING:
     from bot.client import PlexManagerBot
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryCog(commands.Cog):
@@ -30,9 +33,10 @@ class LibraryCog(commands.Cog):
             await interaction.followup.send(
                 f"✅ Scan complete: **{added}** added, **{removed}** removed, **{total}** total"
             )
-        except Exception as exc:
+        except Exception:
+            logger.exception("Library rescan failed")
             await interaction.followup.send(
-                f"❌ Scan failed: {exc}", ephemeral=True
+                "❌ Scan failed — check bot logs for details.", ephemeral=True
             )
 
     @app_commands.command(name="status", description="Show bot status information")
@@ -40,7 +44,7 @@ class LibraryCog(commands.Cog):
         uptime = discord.utils.format_dt(self._started_at, style="R")
         guild_count = len(self.bot.guilds)
 
-        media_path = getattr(self.bot, "media_path", "N/A")
+        media_path = ", ".join(getattr(self.bot, "media_paths", [])) or "N/A"
 
         embed = discord.Embed(title="🤖 Bot Status", color=discord.Color.teal())
         embed.add_field(name="Uptime", value=f"Started {uptime}", inline=True)

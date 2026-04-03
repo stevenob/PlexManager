@@ -69,8 +69,8 @@ class MediaCog(commands.Cog):
             )
             return
 
-        total_pages = math.ceil(len(results) / RESULTS_PER_PAGE)
-        page_results = results[:RESULTS_PER_PAGE]
+        total_pages = max(1, math.ceil(len(results) / RESULTS_PER_PAGE))
+        page_results = results
 
         embed = discord.Embed(
             title=f"Search results for '{query}'",
@@ -130,15 +130,22 @@ class MediaCog(commands.Cog):
     @app_commands.command(name="info", description="Get detailed info for a media item")
     @app_commands.describe(title="Exact title of the media item")
     async def info(self, interaction: discord.Interaction, title: str) -> None:
-        results: list[MediaFile] = await self.bot.db.search(title, limit=1)
+        results: list[MediaFile] = await self.bot.db.search(title, limit=5)
 
-        if not results:
+        # Prefer exact match, fall back to first fuzzy result
+        media = None
+        for r in results:
+            if r.title and r.title.lower() == title.lower():
+                media = r
+                break
+        if media is None and results:
+            media = results[0]
+
+        if media is None:
             await interaction.response.send_message(
                 f"No media found matching '{title}'", ephemeral=True
             )
             return
-
-        media = results[0]
         embed = discord.Embed(
             title=media.title or media.filename,
             color=_media_color(media),

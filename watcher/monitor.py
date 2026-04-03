@@ -243,9 +243,10 @@ class MediaMonitor:
         self.bot = bot
         self._observer = Observer()
 
-    def start(self) -> None:
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         """Schedule the event handler and start the observer thread."""
-        loop = asyncio.get_event_loop()
+        if loop is None:
+            loop = asyncio.get_running_loop()
         for media_path in self.media_paths:
             handler = MediaEventHandler(
                 db=self.db,
@@ -258,8 +259,11 @@ class MediaMonitor:
             logger.info("MediaMonitor started — watching %s", media_path)
         self._observer.start()
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 5.0) -> None:
         """Stop the observer thread and wait for it to finish."""
         self._observer.stop()
-        self._observer.join()
-        logger.info("MediaMonitor stopped")
+        self._observer.join(timeout=timeout)
+        if self._observer.is_alive():
+            logger.warning("MediaMonitor observer thread did not stop within %.1fs", timeout)
+        else:
+            logger.info("MediaMonitor stopped")

@@ -17,7 +17,6 @@ COG_MODULES = ["bot.cogs.media", "bot.cogs.library", "bot.cogs.notifications"]
 class PlexManagerBot(commands.Bot):
     def __init__(self, notification_channel_id: int) -> None:
         intents = discord.Intents.default()
-        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
         self._notification_channel_id = notification_channel_id
@@ -37,7 +36,8 @@ class PlexManagerBot(commands.Bot):
                 await self.load_extension(module)
                 logger.info("Loaded cog: %s", module)
             except Exception:
-                logger.warning("Could not load cog %s — skipping", module, exc_info=True)
+                logger.exception("Failed to load cog %s", module)
+                raise
 
         await self.tree.sync()
         logger.info("Slash command tree synced")
@@ -52,5 +52,8 @@ class PlexManagerBot(commands.Bot):
         if channel is None:
             logger.error("Cannot send notification — channel not available")
             return
-        await channel.send(embed=embed)
-        logger.debug("Notification sent to #%s", channel.name)
+        try:
+            await channel.send(embed=embed)
+            logger.debug("Notification sent to #%s", channel.name)
+        except discord.HTTPException:
+            logger.exception("Failed to send notification to #%s", channel.name)
