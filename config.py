@@ -1,10 +1,11 @@
 import os
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-def _safe_int(value: str | None, default: int) -> int:
+def _safe_int(value: Optional[str], default: int) -> int:
     """Parse an integer from an env var, returning *default* on failure."""
     if not value:
         return default
