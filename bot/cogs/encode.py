@@ -171,7 +171,7 @@ class EncodeCog(commands.Cog):
         embed.set_footer(text=f"Preset: {preset}")
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="encodeall", description="Queue all eligible movies for H.265 encoding")
+    @app_commands.command(name="encodeall", description="Queue all MPEG-2 and VC-1 movies for H.265 encoding")
     async def encode_all(self, interaction: discord.Interaction) -> None:
         if not self._encoder.is_available:
             await interaction.response.send_message(
