@@ -968,6 +968,13 @@ class MediaDatabase:
         await self._conn.commit()
         return removed
 
+    async def remove_encode_done(self, path: str) -> None:
+        """Remove a completed encode job from the queue."""
+        await self._conn.execute(
+            "DELETE FROM encode_queue WHERE path = ?", (path,)
+        )
+        await self._conn.commit()
+
     async def get_encode_stats(self) -> dict:
         """Return encode queue statistics."""
         sql = """

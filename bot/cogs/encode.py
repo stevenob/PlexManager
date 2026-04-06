@@ -351,11 +351,8 @@ class EncodeCog(commands.Cog):
             )
 
             if result.success:
-                await self.bot.db.update_encode_status(
-                    path, "done",
-                    progress=100,
-                    encoded_size=result.encoded_size,
-                )
+                # Remove from queue on success
+                await self.bot.db.remove_encode_done(path)
                 # Update the media file's codec in the DB
                 await self.bot.db.update_codec(path, "hevc")
 
