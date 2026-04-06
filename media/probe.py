@@ -16,6 +16,7 @@ class VideoResolution:
     """Holds the width and height of a video stream."""
     width: int
     height: int
+    codec: str | None = None
 
     @property
     def label(self) -> str:
@@ -29,8 +30,32 @@ class VideoResolution:
             return "480p"
         return f"{self.height}p"
 
+    @property
+    def codec_label(self) -> str:
+        """Return human-readable codec name."""
+        if self.codec is None:
+            return "Unknown"
+        codec_map = {
+            "hevc": "H.265",
+            "h265": "H.265",
+            "h264": "H.264",
+            "avc": "H.264",
+            "mpeg2video": "MPEG-2",
+            "mpeg4": "MPEG-4",
+            "vp9": "VP9",
+            "av1": "AV1",
+            "vc1": "VC-1",
+            "wmv3": "WMV",
+        }
+        return codec_map.get(self.codec.lower(), self.codec.upper())
+
+    @property
+    def is_hevc(self) -> bool:
+        """Return True if the codec is H.265/HEVC."""
+        return self.codec is not None and self.codec.lower() in ("hevc", "h265")
+
     def __str__(self) -> str:
-        return f"{self.width}x{self.height} ({self.label})"
+        return f"{self.width}x{self.height} ({self.label}, {self.codec_label})"
 
 
 def ffprobe_available() -> bool:
@@ -100,13 +125,14 @@ async def probe_resolution(filepath: str, timeout: float = 30.0) -> VideoResolut
     stream = streams[0]
     width = stream.get("width")
     height = stream.get("height")
+    codec = stream.get("codec_name")
 
     if width is None or height is None:
         logger.debug("Video stream missing width/height in %s", filepath)
         return None
 
     try:
-        resolution = VideoResolution(width=int(width), height=int(height))
+        resolution = VideoResolution(width=int(width), height=int(height), codec=codec)
     except (ValueError, TypeError):
         logger.warning("Invalid resolution values in %s: w=%s h=%s", filepath, width, height)
         return None

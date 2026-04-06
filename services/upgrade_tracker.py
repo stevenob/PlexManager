@@ -217,6 +217,8 @@ class UpgradeTracker:
                     await self.db.update_resolution(
                         movie.path, resolution.width, resolution.height
                     )
+                    if resolution.codec:
+                        await self.db.update_codec(movie.path, resolution.codec)
                     stats["probed"] += 1
                     if resolution.height <= 480 and resolution.width < 1920:
                         stats["low_res"] += 1

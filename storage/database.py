@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS media_files (
     runtime         INTEGER,
     director        TEXT,
     resolution_width  INTEGER,
-    resolution_height INTEGER
+    resolution_height INTEGER,
+    video_codec       TEXT
 )
 """
 
@@ -105,6 +106,7 @@ def _row_to_media(row: aiosqlite.Row) -> MediaFile:
         genres=genres,
         resolution_width=row["resolution_width"],
         resolution_height=row["resolution_height"],
+        video_codec=row["video_codec"],
     )
 
     if media_type == MediaType.MOVIE:
@@ -156,6 +158,10 @@ class MediaDatabase:
                 await self._db.execute(f"ALTER TABLE media_files ADD COLUMN {col} {col_type}")
             except Exception:
                 pass  # Column already exists
+        try:
+            await self._db.execute("ALTER TABLE media_files ADD COLUMN video_codec TEXT")
+        except Exception:
+            pass  # Column already exists
 
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_media_created_at ON media_files (created_at)"
@@ -216,6 +222,7 @@ class MediaDatabase:
         director = getattr(media, "director", None)
         resolution_width = getattr(media, "resolution_width", None)
         resolution_height = getattr(media, "resolution_height", None)
+        video_codec = getattr(media, "video_codec", None)
 
         async with self._conn.execute(
             """
@@ -223,12 +230,14 @@ class MediaDatabase:
                 path, filename, media_type, size, created_at, modified_at,
                 tmdb_id, title, year, overview, poster_url, rating, genres,
                 show_title, season_number, episode_number, episode_title,
-                runtime, director, resolution_width, resolution_height
+                runtime, director, resolution_width, resolution_height,
+                video_codec
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?,
+                ?
             )
             ON CONFLICT(path) DO UPDATE SET
                 filename      = excluded.filename,
@@ -250,7 +259,8 @@ class MediaDatabase:
                 runtime       = excluded.runtime,
                 director      = excluded.director,
                 resolution_width  = excluded.resolution_width,
-                resolution_height = excluded.resolution_height
+                resolution_height = excluded.resolution_height,
+                video_codec       = excluded.video_codec
             """,
             (
                 media.path,
@@ -274,6 +284,7 @@ class MediaDatabase:
                 director,
                 resolution_width,
                 resolution_height,
+                video_codec,
             ),
         ) as cursor:
             row_id = cursor.lastrowid
@@ -642,6 +653,54 @@ class MediaDatabase:
         ) as cursor:
             row = await cursor.fetchone()
         return row is not None and row["tmdb_id"] is not None
+
+    async def get_non_hevc_movies(self, limit: int = 200) -> list[MediaFile]:
+        """Return movies not encoded in H.265/HEVC."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND video_codec IS NOT NULL "
+            "AND video_codec NOT IN ('hevc', 'h265') "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def get_movies_without_codec(self, limit: int = 500) -> list[MediaFile]:
+        """Return movies that haven't been probed for codec yet."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND video_codec IS NULL "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def update_codec(self, path: str, codec: str) -> None:
+        """Update the video codec for a media file."""
+        await self._conn.execute(
+            "UPDATE media_files SET video_codec = ? WHERE path = ?",
+            (codec, path),
+        )
+        await self._conn.commit()
+
+    async def get_codec_stats(self) -> dict:
+        """Return counts of movies by codec type."""
+        sql = """
+            SELECT
+                COALESCE(video_codec, 'unscanned') as codec,
+                COUNT(*) as count
+            FROM media_files
+            WHERE media_type = 'movie'
+            GROUP BY video_codec
+            ORDER BY count DESC
+        """
+        async with self._conn.execute(sql) as cursor:
+            rows = await cursor.fetchall()
+        return {row["codec"]: row["count"] for row in rows}
 
     # ------------------------------------------------------------------
     # Upgrade tracking
