@@ -248,6 +248,9 @@ class MediaMonitor:
         if loop is None:
             loop = asyncio.get_running_loop()
         for media_path in self.media_paths:
+            if not os.path.isdir(media_path):
+                logger.warning("MediaMonitor skipping unavailable path: %s", media_path)
+                continue
             handler = MediaEventHandler(
                 db=self.db,
                 tmdb=self.tmdb,

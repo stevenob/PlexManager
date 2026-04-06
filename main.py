@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import logging.handlers
+import os
 import signal
 import sys
 
@@ -45,6 +46,16 @@ async def main() -> None:
     # --- Set up logging ---
     setup_logging()
     logger.info("Configuration validated successfully")
+
+    # Warn about inaccessible media paths but don't block startup — the NAS
+    # may mount later, and the scanner / watcher already handle missing paths.
+    for p in Config.MEDIA_PATHS:
+        if not os.path.isdir(p):
+            logger.warning("Media path not currently accessible: %s", p)
+
+    # Warn about optional tools (e.g. ffprobe for resolution detection)
+    for warning in Config.warn_missing_tools():
+        logger.warning(warning)
 
     # --- Initialise core components ---
     db = MediaDatabase(Config.DB_PATH)

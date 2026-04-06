@@ -31,6 +31,29 @@ class MediaFile:
     rating: float | None = None
     genres: list[str] | None = None
     id: int | None = None
+    resolution_width: int | None = None
+    resolution_height: int | None = None
+
+    @property
+    def resolution_label(self) -> str:
+        """Return a resolution label like '1080p', '720p', '480p', or 'Unknown'."""
+        if self.resolution_height is None:
+            return "Unknown"
+        if self.resolution_width is not None and self.resolution_width >= 3840:
+            return "4K"
+        if self.resolution_height >= 2160:
+            return "4K"
+        if self.resolution_width is not None and self.resolution_width >= 1920:
+            return "1080p"
+        if self.resolution_height >= 1080:
+            return "1080p"
+        if self.resolution_width is not None and self.resolution_width >= 1280:
+            return "720p"
+        if self.resolution_height >= 720:
+            return "720p"
+        if self.resolution_height >= 480:
+            return "480p"
+        return f"{self.resolution_height}p"
 
     @property
     def human_size(self) -> str:

@@ -11,7 +11,7 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-COG_MODULES = ["bot.cogs.media", "bot.cogs.library", "bot.cogs.notifications"]
+COG_MODULES = ["bot.cogs.media", "bot.cogs.library", "bot.cogs.notifications", "bot.cogs.upgrades"]
 
 
 class PlexManagerBot(commands.Bot):
@@ -39,8 +39,20 @@ class PlexManagerBot(commands.Bot):
                 logger.exception("Failed to load cog %s", module)
                 raise
 
-        await self.tree.sync()
-        logger.info("Slash command tree synced")
+        # Sync to specific guild for instant command availability.
+        # Clear any stale global commands to avoid duplicates.
+        guild_id = Config.GUILD_ID
+        if guild_id:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            # Clear global commands to prevent duplicates
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
+            logger.info("Slash command tree synced to guild %s", guild_id)
+        else:
+            await self.tree.sync()
+            logger.info("Slash command tree synced globally")
 
     async def on_ready(self) -> None:
         logger.info(

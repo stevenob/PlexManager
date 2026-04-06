@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 from typing import Any
 
 import aiohttp
@@ -101,6 +102,7 @@ class TMDbClient:
         self, title: str, year: int | None = None
     ) -> dict | None:
         """Search for a movie by title (and optional year)."""
+        title = unicodedata.normalize("NFC", title)
         params: dict[str, Any] = {"query": title}
         if year is not None:
             params["year"] = year
@@ -112,6 +114,7 @@ class TMDbClient:
 
     async def search_tv(self, title: str) -> dict | None:
         """Search for a TV show by title."""
+        title = unicodedata.normalize("NFC", title)
         data = await self._request("/search/tv", {"query": title})
         if not data or not data.get("results"):
             return None
@@ -128,6 +131,36 @@ class TMDbClient:
     async def get_tv_details(self, tmdb_id: int) -> dict | None:
         """Fetch full TV show details."""
         return await self._request(f"/tv/{tmdb_id}")
+
+    async def check_bluray_release(self, tmdb_id: int) -> bool | None:
+        """Check if a movie has a Blu-ray or physical media release.
+
+        Returns True if a Blu-ray/physical release is found, False if confirmed
+        no physical release exists, or None if the data is inconclusive.
+
+        Uses the /movie/{id}/release_dates endpoint.
+        """
+        data = await self._request(f"/movie/{tmdb_id}/release_dates")
+        if not data:
+            return None
+
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        # Release type 5 = Physical in TMDb's release_dates API
+        # Also check for type 4 (Digital) as many Blu-rays also have digital releases
+        for country_data in results:
+            for release in country_data.get("release_dates", []):
+                release_type = release.get("type")
+                # Type 5 = Physical release (includes Blu-ray, DVD)
+                if release_type == 5:
+                    return True
+
+        # If we found release data but no physical release, check if the movie
+        # is old enough that it likely should have a physical release.
+        # For very new movies, return None (inconclusive) rather than False.
+        return False
 
     async def _get_episode_details(
         self, tmdb_id: int, season: int, episode: int

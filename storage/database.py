@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS media_files (
     episode_number  INTEGER,
     episode_title   TEXT,
     runtime         INTEGER,
-    director        TEXT
+    director        TEXT,
+    resolution_width  INTEGER,
+    resolution_height INTEGER
 )
 """
 
@@ -45,6 +47,36 @@ CREATE TABLE IF NOT EXISTS watch_history (
     timestamp       TEXT NOT NULL,
     title           TEXT,
     media_type      TEXT
+)
+"""
+
+_CREATE_UPGRADE_STATUS = """
+CREATE TABLE IF NOT EXISTS upgrade_status (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    path            TEXT UNIQUE NOT NULL,
+    tmdb_id         INTEGER,
+    title           TEXT,
+    year            INTEGER,
+    status          TEXT NOT NULL DEFAULT 'tracking',
+    updated_at      TEXT NOT NULL,
+    purchase_url    TEXT,
+    CONSTRAINT valid_status CHECK (status IN ('tracking', 'ignored', 'purchased', 'no_bluray'))
+)
+"""
+
+_CREATE_UPGRADE_DEALS = """
+CREATE TABLE IF NOT EXISTS upgrade_deals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    path            TEXT NOT NULL,
+    title           TEXT,
+    ebay_item_id    TEXT UNIQUE NOT NULL,
+    ebay_url        TEXT NOT NULL,
+    price           REAL NOT NULL,
+    avg_price       REAL,
+    shipping_cost   REAL NOT NULL DEFAULT 0,
+    condition       TEXT,
+    found_at        TEXT NOT NULL,
+    notified        INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -71,6 +103,8 @@ def _row_to_media(row: aiosqlite.Row) -> MediaFile:
         poster_url=row["poster_url"],
         rating=row["rating"],
         genres=genres,
+        resolution_width=row["resolution_width"],
+        resolution_height=row["resolution_height"],
     )
 
     if media_type == MediaType.MOVIE:
@@ -116,6 +150,13 @@ class MediaDatabase:
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_media_type_title ON media_files (media_type, title)"
         )
+        # Migration: add resolution columns if missing
+        for col, col_type in [("resolution_width", "INTEGER"), ("resolution_height", "INTEGER")]:
+            try:
+                await self._db.execute(f"ALTER TABLE media_files ADD COLUMN {col} {col_type}")
+            except Exception:
+                pass  # Column already exists
+
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_media_created_at ON media_files (created_at)"
         )
@@ -124,6 +165,22 @@ class MediaDatabase:
         )
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_watch_history_id ON watch_history (id DESC)"
+        )
+        await self._db.execute(_CREATE_UPGRADE_STATUS)
+        await self._db.execute(_CREATE_UPGRADE_DEALS)
+        # Migration: add shipping_cost column if missing
+        try:
+            await self._db.execute("ALTER TABLE upgrade_deals ADD COLUMN shipping_cost REAL NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_upgrade_status_status ON upgrade_status (status)"
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_upgrade_deals_path ON upgrade_deals (path)"
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_upgrade_deals_notified ON upgrade_deals (notified)"
         )
         await self._db.commit()
         logger.info("Database ready")
@@ -157,6 +214,8 @@ class MediaDatabase:
         episode_title = getattr(media, "episode_title", None)
         runtime = getattr(media, "runtime", None)
         director = getattr(media, "director", None)
+        resolution_width = getattr(media, "resolution_width", None)
+        resolution_height = getattr(media, "resolution_height", None)
 
         async with self._conn.execute(
             """
@@ -164,12 +223,12 @@ class MediaDatabase:
                 path, filename, media_type, size, created_at, modified_at,
                 tmdb_id, title, year, overview, poster_url, rating, genres,
                 show_title, season_number, episode_number, episode_title,
-                runtime, director
+                runtime, director, resolution_width, resolution_height
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?
+                ?, ?, ?, ?
             )
             ON CONFLICT(path) DO UPDATE SET
                 filename      = excluded.filename,
@@ -189,7 +248,9 @@ class MediaDatabase:
                 episode_number= excluded.episode_number,
                 episode_title = excluded.episode_title,
                 runtime       = excluded.runtime,
-                director      = excluded.director
+                director      = excluded.director,
+                resolution_width  = excluded.resolution_width,
+                resolution_height = excluded.resolution_height
             """,
             (
                 media.path,
@@ -211,6 +272,8 @@ class MediaDatabase:
                 episode_title,
                 runtime,
                 director,
+                resolution_width,
+                resolution_height,
             ),
         ) as cursor:
             row_id = cursor.lastrowid
@@ -521,6 +584,57 @@ class MediaDatabase:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def get_low_res_movies(self, max_height: int = 480, limit: int = 100) -> list[MediaFile]:
+        """Return movies with resolution below max_height pixels.
+
+        Uses both height and width to correctly classify widescreen content
+        (e.g. 1920x800 is 1080p despite the low height).
+        """
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND resolution_height IS NOT NULL "
+            "AND resolution_height > 0 "
+            "AND resolution_height <= ? "
+            "AND (resolution_width IS NULL OR resolution_width < 1920) "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (max_height, limit)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def get_movies_without_resolution(self, limit: int = 500) -> list[MediaFile]:
+        """Return movies that haven't been probed for resolution yet."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND resolution_height IS NULL "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def update_resolution(self, path: str, width: int, height: int) -> None:
+        """Update the resolution for a media file."""
+        await self._conn.execute(
+            "UPDATE media_files SET resolution_width = ?, resolution_height = ? WHERE path = ?",
+            (width, height, path),
+        )
+        await self._conn.commit()
+
+    async def get_unmatched_movies(self, limit: int = 100) -> list[MediaFile]:
+        """Return movies that have no TMDb match (tmdb_id is NULL)."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND tmdb_id IS NULL "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
     async def has_tmdb_metadata(self, path: str) -> bool:
         """Check whether the file at *path* already has TMDb metadata cached."""
         async with self._conn.execute(
@@ -528,3 +642,136 @@ class MediaDatabase:
         ) as cursor:
             row = await cursor.fetchone()
         return row is not None and row["tmdb_id"] is not None
+
+    # ------------------------------------------------------------------
+    # Upgrade tracking
+    # ------------------------------------------------------------------
+
+    async def get_upgrade_status(self, path: str) -> str | None:
+        """Return the upgrade status for a movie path, or None if not tracked."""
+        async with self._conn.execute(
+            "SELECT status FROM upgrade_status WHERE path = ?", (path,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row["status"] if row else None
+
+    async def set_upgrade_status(
+        self,
+        path: str,
+        status: str,
+        tmdb_id: int | None = None,
+        title: str | None = None,
+        year: int | None = None,
+        purchase_url: str | None = None,
+    ) -> None:
+        """Insert or update the upgrade status for a movie."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            """
+            INSERT INTO upgrade_status (path, tmdb_id, title, year, status, updated_at, purchase_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(path) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at,
+                tmdb_id = COALESCE(excluded.tmdb_id, upgrade_status.tmdb_id),
+                title = COALESCE(excluded.title, upgrade_status.title),
+                year = COALESCE(excluded.year, upgrade_status.year),
+                purchase_url = COALESCE(excluded.purchase_url, upgrade_status.purchase_url)
+            """,
+            (path, tmdb_id, title, year, status, now, purchase_url),
+        )
+        await self._conn.commit()
+
+    async def get_movies_by_upgrade_status(
+        self, status: str, limit: int = 100
+    ) -> list[dict]:
+        """Return upgrade_status rows filtered by status."""
+        async with self._conn.execute(
+            "SELECT * FROM upgrade_status WHERE status = ? ORDER BY title LIMIT ?",
+            (status, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_upgrade_summary(self) -> dict:
+        """Return counts by upgrade status."""
+        sql = """
+            SELECT status, COUNT(*) as count
+            FROM upgrade_status
+            GROUP BY status
+        """
+        async with self._conn.execute(sql) as cursor:
+            rows = await cursor.fetchall()
+        summary = {row["status"]: row["count"] for row in rows}
+        return summary
+
+    async def add_upgrade_deal(
+        self,
+        path: str,
+        title: str | None,
+        ebay_item_id: str,
+        ebay_url: str,
+        price: float,
+        avg_price: float,
+        condition: str | None = None,
+        shipping_cost: float = 0.0,
+    ) -> bool:
+        """Store an eBay deal. Returns True if newly inserted, False if duplicate."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO upgrade_deals (path, title, ebay_item_id, ebay_url, price, avg_price, shipping_cost, condition, found_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (path, title, ebay_item_id, ebay_url, price, avg_price, shipping_cost, condition, now),
+            )
+            await self._conn.commit()
+            return True
+        except Exception:
+            # Duplicate ebay_item_id
+            return False
+
+    async def get_unnotified_deals(self, limit: int = 50) -> list[dict]:
+        """Return deals that haven't been sent to Discord yet."""
+        async with self._conn.execute(
+            "SELECT * FROM upgrade_deals WHERE notified = 0 ORDER BY price ASC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def mark_deals_notified(self, deal_ids: list[int]) -> None:
+        """Mark deals as notified."""
+        if not deal_ids:
+            return
+        placeholders = ",".join("?" * len(deal_ids))
+        await self._conn.execute(
+            f"UPDATE upgrade_deals SET notified = 1 WHERE id IN ({placeholders})",
+            deal_ids,
+        )
+        await self._conn.commit()
+
+    async def get_stale_no_bluray(self, days: int = 30, limit: int = 50) -> list[dict]:
+        """Return no_bluray entries older than `days` for re-checking."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        async with self._conn.execute(
+            "SELECT * FROM upgrade_status WHERE status = 'no_bluray' AND updated_at < ? LIMIT ?",
+            (cutoff, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_recent_deals(self, limit: int = 25) -> list[dict]:
+        """Return the most recent deals, for display purposes."""
+        async with self._conn.execute(
+            """
+            SELECT d.*, s.status as upgrade_status
+            FROM upgrade_deals d
+            LEFT JOIN upgrade_status s ON d.path = s.path
+            ORDER BY d.found_at DESC LIMIT ?
+            """,
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
