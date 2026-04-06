@@ -228,34 +228,48 @@ class HandBrakeEncoder:
 
         # Read stderr for progress (HandBrake outputs progress to stderr)
         async def _read_progress() -> None:
+            buf = b""
             while True:
-                line_bytes = await proc.stderr.readline()
-                if not line_bytes:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
                     break
-                line = line_bytes.decode(errors="replace").strip()
-                if not line:
-                    continue
+                buf += chunk
+                # HandBrake uses \r for progress lines, \n for log lines
+                while b"\r" in buf or b"\n" in buf:
+                    # Split on whichever comes first
+                    r_idx = buf.find(b"\r")
+                    n_idx = buf.find(b"\n")
+                    if r_idx == -1:
+                        idx = n_idx
+                    elif n_idx == -1:
+                        idx = r_idx
+                    else:
+                        idx = min(r_idx, n_idx)
+                    line = buf[:idx].decode(errors="replace").strip()
+                    buf = buf[idx + 1:]
+                    if not line:
+                        continue
 
-                m = _PROGRESS_RE.search(line)
-                if m and progress_callback:
-                    pct = min(int(float(m.group(1))), 100)
-                    eta_m = _ETA_RE.search(line)
-                    fps_m = _FPS_RE.search(line)
-                    progress = EncodeProgress(
-                        percent=pct,
-                        eta=eta_m.group(1) if eta_m else "",
-                        fps=fps_m.group(1) if fps_m else "",
-                        text=f"Encoding: {pct}%"
-                              + (f" — ETA {eta_m.group(1)}" if eta_m else "")
-                              + (f" ({fps_m.group(1)} fps)" if fps_m else ""),
-                    )
-                    progress_callback(progress)
+                    m = _PROGRESS_RE.search(line)
+                    if m and progress_callback:
+                        pct = min(int(float(m.group(1))), 100)
+                        eta_m = _ETA_RE.search(line)
+                        fps_m = _FPS_RE.search(line)
+                        progress = EncodeProgress(
+                            percent=pct,
+                            eta=eta_m.group(1) if eta_m else "",
+                            fps=fps_m.group(1) if fps_m else "",
+                            text=f"Encoding: {pct}%"
+                                  + (f" — ETA {eta_m.group(1)}" if eta_m else "")
+                                  + (f" ({fps_m.group(1)} fps)" if fps_m else ""),
+                        )
+                        progress_callback(progress)
 
         # Read stdout (usually empty for encode)
         async def _read_stdout() -> None:
             while True:
-                data = await proc.stdout.readline()
-                if not data:
+                chunk = await proc.stdout.read(4096)
+                if not chunk:
                     break
 
         await asyncio.gather(_read_progress(), _read_stdout())
