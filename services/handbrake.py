@@ -226,17 +226,16 @@ class HandBrakeEncoder:
             stderr=asyncio.subprocess.PIPE,
         )
 
-        # Read stderr for progress (HandBrake outputs progress to stderr)
+        # Read stdout for progress (HandBrake outputs progress to stdout with \r)
         async def _read_progress() -> None:
             buf = b""
             while True:
-                chunk = await proc.stderr.read(4096)
+                chunk = await proc.stdout.read(4096)
                 if not chunk:
                     break
                 buf += chunk
-                # HandBrake uses \r for progress lines, \n for log lines
+                # HandBrake uses \r for progress lines
                 while b"\r" in buf or b"\n" in buf:
-                    # Split on whichever comes first
                     r_idx = buf.find(b"\r")
                     n_idx = buf.find(b"\n")
                     if r_idx == -1:
@@ -265,14 +264,14 @@ class HandBrakeEncoder:
                         )
                         progress_callback(progress)
 
-        # Read stdout (usually empty for encode)
-        async def _read_stdout() -> None:
+        # Read stderr (log output)
+        async def _read_stderr() -> None:
             while True:
-                chunk = await proc.stdout.read(4096)
+                chunk = await proc.stderr.read(4096)
                 if not chunk:
                     break
 
-        await asyncio.gather(_read_progress(), _read_stdout())
+        await asyncio.gather(_read_progress(), _read_stderr())
         await proc.wait()
 
         if proc.returncode != 0:
