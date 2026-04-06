@@ -139,36 +139,28 @@ The scanner expects your media organized in a standard layout:
 
 | Command | Description |
 |---------|-------------|
-| `/search <query> [type]` | Search media by title (defaults to Movies, select TV Show to search shows) |
-| `/info <title>` | Detailed info card with poster, rating, synopsis |
+| `/search <query> [type]` | Search media by title with codec + resolution info |
+| `/info <title>` | Detailed info card with poster, rating, synopsis, codec, resolution |
 | `/list [type] [query]` | List all movies or TV shows, with optional title filter |
 | `/random [type]` | Pick a random movie or TV show |
 | `/genre [genre] [type]` | Browse by genre, or list available genres |
 | `/duplicates` | Find duplicate movies in your library |
 | `/recent [count]` | Show recently added media (default: 10) |
-| `/stats` | Library statistics |
-| `/rescan` | Trigger a manual library rescan |
-| `/status` | Bot status and uptime |
+| `/rescan` | Trigger a library rescan + probe codec/resolution for new files |
+| `/status` | Combined dashboard: library, codecs, encoding, upgrades, services |
 | `/notifications [count]` | View recent file change history |
-| `/upgrades list` | View all low-res movies (≤480p) |
-| `/upgrades check <title>` | Check eBay Blu-ray prices for a movie |
-| `/upgrades sellcheck <title>` | Check what your DVD could sell for |
-| `/upgrades deals` | View Blu-ray deals found below average price |
-| `/upgrades scan` | Trigger a full eBay deal search |
-| `/upgrades status` | Upgrade scanner dashboard |
-| `/upgrades purchased <title>` | Mark a movie as purchased |
-| `/upgrades ignore <title>` | Exclude a movie from upgrade scans |
-| `/upgrades unmatched` | Movies that failed TMDb lookup |
-| `/upgrades rescan_resolution` | Probe resolution for unscanned movies |
-| `/codec list` | View non-H.265 movies |
-| `/codec status` | Codec breakdown for your library |
-| `/codec check <title>` | Check a specific movie's codec |
-| `/codec rescan` | Probe codec for unscanned movies |
-| `/encode add <title>` | Queue a movie for H.265 re-encoding |
-| `/encode all` | Queue all non-H.265 movies |
-| `/encode queue` | View encode queue |
-| `/encode status` | Encoding progress and stats |
-| `/encode cancel <title>` | Remove from encode queue |
+| `/lowres` | View all low-res movies (≤480p) |
+| `/pricecheck <title>` | Check eBay Blu-ray prices for a movie |
+| `/sellcheck <title>` | Check what your DVD could sell for |
+| `/deals` | View Blu-ray deals found below average price |
+| `/dealscan` | Trigger a full eBay deal search |
+| `/purchased <title>` | Mark a movie as purchased |
+| `/ignore <title>` | Exclude a movie from upgrade scans |
+| `/unmatched` | Movies that failed TMDb lookup |
+| `/encode <title>` | Queue a movie for H.265 re-encoding |
+| `/encodeall` | Queue all eligible movies (MPEG-2, VC-1) for encoding |
+| `/queue` | View the encode queue |
+| `/cancel <title>` | Remove from encode queue |
 
 ## Configuration
 

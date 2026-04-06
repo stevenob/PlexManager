@@ -11,7 +11,7 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-COG_MODULES = ["bot.cogs.media", "bot.cogs.library", "bot.cogs.notifications", "bot.cogs.upgrades", "bot.cogs.codec", "bot.cogs.encode"]
+COG_MODULES = ["bot.cogs.media", "bot.cogs.library", "bot.cogs.notifications", "bot.cogs.upgrades", "bot.cogs.encode"]
 
 
 class PlexManagerBot(commands.Bot):

@@ -80,9 +80,14 @@ class MediaCog(commands.Cog):
         for item in page_results:
             year_str = f" ({item.year})" if item.year else ""
             size_str = item.human_size
+            value_parts = [f"**Type:** {_type_label(item)}", f"**Size:** {size_str}"]
+            if item.resolution_label != "Unknown":
+                value_parts.append(f"**Res:** {item.resolution_label}")
+            if item.codec_label != "Unknown":
+                value_parts.append(f"**Codec:** {item.codec_label}")
             embed.add_field(
                 name=f"{item.title}{year_str}",
-                value=f"**Type:** {_type_label(item)} · **Size:** {size_str}",
+                value=" · ".join(value_parts),
                 inline=False,
             )
 
@@ -187,6 +192,10 @@ class MediaCog(commands.Cog):
             f"**Size:** {media.human_size}\n"
             f"**Format:** {media.extension}"
         )
+        if media.resolution_label != "Unknown":
+            file_info += f"\n**Resolution:** {media.resolution_label}"
+        if media.codec_label != "Unknown":
+            file_info += f"\n**Codec:** {media.codec_label}"
         embed.add_field(name="File Details", value=file_info, inline=False)
 
         if media.poster_url:
@@ -444,27 +453,6 @@ class MediaCog(commands.Cog):
         embed.set_footer(text=f"{len(dupes)} duplicate title(s) found")
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="stats", description="Show library statistics")
-    async def stats(self, interaction: discord.Interaction) -> None:
-        data: dict = await self.bot.db.get_stats()
-
-        total_bytes = data.get("total_size", 0)
-        total_size = _human_bytes(total_bytes)
-
-        embed = discord.Embed(title="📊 Library Statistics", color=discord.Color.purple())
-        embed.add_field(name="🎬 Movies", value=str(data.get("total_movies", 0)), inline=True)
-        embed.add_field(name="📺 TV Shows", value=str(data.get("total_shows", 0)), inline=True)
-        embed.add_field(
-            name="🎞️ Episodes", value=str(data.get("total_episodes", 0)), inline=True
-        )
-        embed.add_field(name="💾 Total Size", value=total_size, inline=True)
-        embed.add_field(
-            name="📥 Added (7 days)",
-            value=str(data.get("recent_count", 0)),
-            inline=True,
-        )
-
-        await interaction.response.send_message(embed=embed)
 
 
 def _human_bytes(size: int) -> str:

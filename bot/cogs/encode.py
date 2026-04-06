@@ -34,6 +34,57 @@ def _human_bytes(size: int) -> str:
     return f"{s:.1f} {units[i]}"
 
 
+class EncodeButton(discord.ui.Button):
+    """Button to queue a movie for H.265 encoding."""
+
+    def __init__(self, path: str, title: str) -> None:
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label="🔄 Queue for Encode",
+            custom_id=f"encode_queue:{path[:80]}",
+        )
+        self.path = path
+        self.title = title
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        from services.handbrake import auto_preset
+        bot = interaction.client
+        media = await bot.db.get_media(self.path)
+        if media is None:
+            await interaction.response.send_message("Movie not found.", ephemeral=True)
+            return
+        preset = auto_preset(media.resolution_width, media.resolution_height)
+        added = await bot.db.add_to_encode_queue(
+            path=media.path,
+            title=media.title,
+            year=media.year,
+            preset=preset,
+            original_codec=media.video_codec,
+            original_size=media.size,
+        )
+        if added:
+            await interaction.response.send_message(
+                f"🔄 **{self.title}** queued for H.265 encoding!", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"**{self.title}** is already in the encode queue.", ephemeral=True
+            )
+        # Disable button
+        if self.view:
+            for item in self.view.children:
+                item.disabled = True
+            await interaction.message.edit(view=self.view)
+
+
+class EncodeView(discord.ui.View):
+    """View with an encode queue button."""
+
+    def __init__(self, path: str, title: str) -> None:
+        super().__init__(timeout=None)
+        self.add_item(EncodeButton(path, title))
+
+
 class EncodeCog(commands.Cog):
     """H.265 re-encoding queue — process movies through HandBrakeCLI."""
 
@@ -48,11 +99,7 @@ class EncodeCog(commands.Cog):
     def cog_unload(self) -> None:
         self._worker_loop.cancel()
 
-    encode_group = app_commands.Group(
-        name="encode", description="H.265 re-encoding queue"
-    )
-
-    @encode_group.command(name="add", description="Queue a movie for H.265 re-encoding")
+    @app_commands.command(name="encode", description="Queue a movie for H.265 re-encoding")
     @app_commands.describe(title="Title of the movie to encode")
     async def encode_add(
         self, interaction: discord.Interaction, title: str
@@ -124,7 +171,7 @@ class EncodeCog(commands.Cog):
         embed.set_footer(text=f"Preset: {preset}")
         await interaction.response.send_message(embed=embed)
 
-    @encode_group.command(name="all", description="Queue all non-H.265 movies for encoding")
+    @app_commands.command(name="encodeall", description="Queue all eligible movies for H.265 encoding")
     async def encode_all(self, interaction: discord.Interaction) -> None:
         if not self._encoder.is_available:
             await interaction.response.send_message(
@@ -168,7 +215,7 @@ class EncodeCog(commands.Cog):
         embed.add_field(name="📊 Total Non-H.265", value=str(len(movies)), inline=True)
         await interaction.followup.send(embed=embed)
 
-    @encode_group.command(name="queue", description="Show the encode queue")
+    @app_commands.command(name="queue", description="Show the encode queue")
     @app_commands.describe(page="Page number (default 1)")
     async def encode_queue(
         self, interaction: discord.Interaction, page: Optional[int] = None
@@ -222,41 +269,7 @@ class EncodeCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
 
-    @encode_group.command(name="status", description="Show encoding progress and stats")
-    async def encode_status(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
-
-        stats = await self.bot.db.get_encode_stats()
-        embed = discord.Embed(
-            title="📊 Encode Status",
-            color=COLOR_ENCODE,
-        )
-
-        embed.add_field(name="⏳ Queued", value=str(stats.get("queued", 0)), inline=True)
-        embed.add_field(name="🔄 Encoding", value=str(stats.get("encoding", 0)), inline=True)
-        embed.add_field(name="✅ Done", value=str(stats.get("done", 0)), inline=True)
-        embed.add_field(name="❌ Failed", value=str(stats.get("failed", 0)), inline=True)
-
-        total_orig = stats.get("total_original", 0)
-        total_enc = stats.get("total_encoded", 0)
-        if total_orig > 0:
-            savings = total_orig - total_enc
-            embed.add_field(name="💾 Space Saved", value=_human_bytes(savings), inline=True)
-            pct = (savings / total_orig) * 100
-            embed.add_field(name="📉 Reduction", value=f"{pct:.1f}%", inline=True)
-
-        if self._encoding and self._current_title:
-            embed.add_field(
-                name="🎬 Currently Encoding",
-                value=f"**{self._current_title}** — {self._current_progress.text}",
-                inline=False,
-            )
-
-        hb_status = "✅ Available" if self._encoder.is_available else "⚠️ Not found"
-        embed.set_footer(text=f"HandBrakeCLI: {hb_status}")
-        await interaction.followup.send(embed=embed)
-
-    @encode_group.command(name="cancel", description="Remove a movie from the encode queue")
+    @app_commands.command(name="cancel", description="Remove a movie from the encode queue")
     @app_commands.describe(title="Title of the movie to remove")
     async def encode_cancel(
         self, interaction: discord.Interaction, title: str

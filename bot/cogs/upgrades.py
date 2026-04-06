@@ -101,13 +101,9 @@ class UpgradesCog(commands.Cog):
         self._scan_loop.cancel()
         await self._ebay.close()
 
-    # ── Upgrade command group ─────────────────────────────────────────
+    # ── Slash commands ────────────────────────────────────────────────
 
-    upgrade_group = app_commands.Group(
-        name="upgrades", description="Blu-ray upgrade finder for low-res movies"
-    )
-
-    @upgrade_group.command(name="list", description="Show all low-resolution movies in your library")
+    @app_commands.command(name="lowres", description="Show all low-resolution movies in your library")
     @app_commands.describe(page="Page number (default 1)")
     async def upgrade_list(
         self, interaction: discord.Interaction, page: Optional[int] = None
@@ -163,10 +159,7 @@ class UpgradesCog(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
 
-    @upgrade_group.command(
-        name="unmatched",
-        description="Show low-res movies that failed TMDb lookup",
-    )
+    @app_commands.command(name="unmatched", description="Show movies that failed TMDb lookup")
     async def upgrade_unmatched(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
@@ -198,9 +191,7 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"{len(movies)} unmatched movie(s)")
         await interaction.followup.send(embed=embed)
 
-    @upgrade_group.command(
-        name="deals", description="Show current Blu-ray deals from eBay"
-    )
+    @app_commands.command(name="deals", description="Show current Blu-ray deals from eBay")
     async def upgrade_deals(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
@@ -236,9 +227,7 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"{len(deals)} deal(s)")
         await interaction.followup.send(embed=embed)
 
-    @upgrade_group.command(
-        name="check", description="Check eBay Blu-ray prices for a specific movie"
-    )
+    @app_commands.command(name="pricecheck", description="Check eBay Blu-ray prices for a specific movie")
     @app_commands.describe(title="Title of the movie to search for")
     async def upgrade_check(
         self, interaction: discord.Interaction, title: str
@@ -309,9 +298,7 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"Current: {res_label} · 💰 = below average")
         await interaction.followup.send(embed=embed)
 
-    @upgrade_group.command(
-        name="sellcheck", description="Check what your DVD could sell for on eBay"
-    )
+    @app_commands.command(name="sellcheck", description="Check what your DVD could sell for on eBay")
     @app_commands.describe(title="Title of the movie to price check")
     async def upgrade_sellcheck(
         self, interaction: discord.Interaction, title: str
@@ -370,9 +357,7 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"Current: {res_label} · {dvd_result.total_found} DVD listings on eBay")
         await interaction.followup.send(embed=embed)
 
-    @upgrade_group.command(
-        name="scan", description="Trigger a Blu-ray deal search on eBay"
-    )
+    @app_commands.command(name="dealscan", description="Trigger a Blu-ray deal search on eBay")
     async def upgrade_scan(self, interaction: discord.Interaction) -> None:
         if not Config.ebay_configured():
             await interaction.response.send_message(
@@ -426,9 +411,7 @@ class UpgradesCog(commands.Cog):
         # Send individual deal notifications
         await self._notify_new_deals()
 
-    @upgrade_group.command(
-        name="ignore", description="Exclude a movie from upgrade scans"
-    )
+    @app_commands.command(name="ignore", description="Exclude a movie from upgrade scans")
     @app_commands.describe(title="Title of the movie to ignore")
     async def upgrade_ignore(
         self, interaction: discord.Interaction, title: str
@@ -459,9 +442,7 @@ class UpgradesCog(commands.Cog):
             f"⏭️ **{movie.title}** will be ignored in future upgrade scans."
         )
 
-    @upgrade_group.command(
-        name="purchased", description="Mark a movie as purchased (Blu-ray bought)"
-    )
+    @app_commands.command(name="purchased", description="Mark a movie as purchased")
     @app_commands.describe(title="Title of the movie you purchased")
     async def upgrade_purchased(
         self, interaction: discord.Interaction, title: str
@@ -491,94 +472,6 @@ class UpgradesCog(commands.Cog):
         await interaction.response.send_message(
             f"✅ **{movie.title}** marked as purchased! It will be removed from upgrade scans."
         )
-
-    @upgrade_group.command(
-        name="status", description="Show upgrade scan summary"
-    )
-    async def upgrade_status(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
-
-        summary = await self.bot.db.get_upgrade_summary()
-        low_res = await self.bot.db.get_low_res_movies(max_height=480, limit=1000)
-        unmatched = await self.bot.db.get_unmatched_movies(limit=1000)
-        unscanned = await self.bot.db.get_movies_without_resolution(limit=1000)
-
-        embed = discord.Embed(
-            title="📊 Upgrade Scanner Status",
-            color=COLOR_INFO,
-        )
-        embed.add_field(name="📀 Low-Res Movies", value=str(len(low_res)), inline=True)
-        embed.add_field(
-            name="🔍 Tracking",
-            value=str(summary.get("tracking", 0)),
-            inline=True,
-        )
-        embed.add_field(
-            name="💰 Deals Found",
-            value=str(len(await self.bot.db.get_recent_deals(limit=1000))),
-            inline=True,
-        )
-        embed.add_field(
-            name="✅ Purchased",
-            value=str(summary.get("purchased", 0)),
-            inline=True,
-        )
-        embed.add_field(
-            name="❌ No Blu-ray",
-            value=str(summary.get("no_bluray", 0)),
-            inline=True,
-        )
-        embed.add_field(
-            name="⏭️ Ignored",
-            value=str(summary.get("ignored", 0)),
-            inline=True,
-        )
-        embed.add_field(
-            name="⚠️ Unmatched (no TMDb)",
-            value=str(len(unmatched)),
-            inline=True,
-        )
-        embed.add_field(
-            name="❓ Unscanned (no resolution)",
-            value=str(len(unscanned)),
-            inline=True,
-        )
-
-        ebay_status = "✅ Configured" if Config.ebay_configured() else "⚠️ Not configured"
-        ffprobe_status = "✅ Available" if ffprobe_available() else "⚠️ Not installed"
-        embed.add_field(
-            name="🔧 Services",
-            value=f"eBay API: {ebay_status}\nffprobe: {ffprobe_status}",
-            inline=False,
-        )
-
-        await interaction.followup.send(embed=embed)
-
-    @upgrade_group.command(
-        name="rescan_resolution",
-        description="Probe resolution for movies that haven't been scanned yet",
-    )
-    async def rescan_resolution(self, interaction: discord.Interaction) -> None:
-        if not ffprobe_available():
-            await interaction.response.send_message(
-                "⚠️ `ffprobe` is not installed. Install ffmpeg to enable resolution detection.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer()
-        stats = await self._tracker.probe_unscanned_movies(limit=1000)
-
-        embed = discord.Embed(
-            title="🔍 Resolution Scan Complete",
-            color=COLOR_INFO,
-        )
-        embed.add_field(name="Total", value=str(stats["total"]), inline=True)
-        embed.add_field(name="Probed", value=str(stats["probed"]), inline=True)
-        embed.add_field(name="Low-Res Found", value=str(stats["low_res"]), inline=True)
-        embed.add_field(name="Failed", value=str(stats["failed"]), inline=True)
-
-        await interaction.followup.send(embed=embed)
 
     # ── Background scan loop ─────────────────────────────────────────
 
