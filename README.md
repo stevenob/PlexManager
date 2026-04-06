@@ -41,6 +41,22 @@ A Discord bot that connects to your NAS media library, providing search, browsin
 - NAS media library mounted as a local path
 - **ffmpeg** (for resolution detection) — `brew install ffmpeg`
 - **eBay Developer account** (optional, for deal searching) — [apply here](https://developer.ebay.com/)
+- **HandBrakeCLI** (optional, for H.265 re-encoding) — `brew install handbrake`
+
+### 🎞️ H.265 Codec Checker & Re-encoder
+
+- **`/codec list`** — View movies not encoded in H.265
+- **`/codec status`** — Breakdown by codec type (H.265 vs H.264 vs other)
+- **`/codec check <title>`** — Check a specific movie's codec, with "Queue for Encode" button
+- **`/codec rescan`** — Probe codec for unscanned movies
+- **`/encode add <title>`** — Queue a movie for H.265 re-encoding
+- **`/encode all`** — Queue all non-H.265 movies at once
+- **`/encode queue`** — View current encode queue
+- **`/encode status`** — Encoding progress and space savings stats
+- **`/encode cancel <title>`** — Remove from queue
+- **Same presets as AutoRipper** — auto-selects by resolution (480p/576p/720p/1080p/4K)
+- **All tracks preserved** — keeps all audio + subtitle tracks, never burns in subtitles
+- **Safe encoding** — encodes to temp file, swaps only on success
 
 ## Setup
 
@@ -144,6 +160,15 @@ The scanner expects your media organized in a standard layout:
 | `/upgrades ignore <title>` | Exclude a movie from upgrade scans |
 | `/upgrades unmatched` | Movies that failed TMDb lookup |
 | `/upgrades rescan_resolution` | Probe resolution for unscanned movies |
+| `/codec list` | View non-H.265 movies |
+| `/codec status` | Codec breakdown for your library |
+| `/codec check <title>` | Check a specific movie's codec |
+| `/codec rescan` | Probe codec for unscanned movies |
+| `/encode add <title>` | Queue a movie for H.265 re-encoding |
+| `/encode all` | Queue all non-H.265 movies |
+| `/encode queue` | View encode queue |
+| `/encode status` | Encoding progress and stats |
+| `/encode cancel <title>` | Remove from encode queue |
 
 ## Configuration
 
@@ -162,6 +187,7 @@ The scanner expects your media organized in a standard layout:
 | `UPGRADE_CHANNEL_ID` | Dedicated channel for upgrade deal notifications | No |
 | `UPGRADE_SCAN_INTERVAL_HOURS` | How often to scan eBay for deals (default: `24`) | No |
 | `MAX_EBAY_PRICE` | Maximum price cap for eBay searches (default: no cap) | No |
+| `HANDBRAKE_PATH` | Path to HandBrakeCLI (default: `/opt/homebrew/bin/HandBrakeCLI`) | No |
 
 > **Note:** The legacy `MEDIA_PATH` variable (single path) is still supported for backwards compatibility.
 

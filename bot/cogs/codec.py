@@ -22,6 +22,57 @@ COLOR_CODEC = 0x1ABC9C  # Teal
 RESULTS_PER_PAGE = 10
 
 
+class EncodeButton(discord.ui.Button):
+    """Button to queue a movie for H.265 encoding."""
+
+    def __init__(self, path: str, title: str) -> None:
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label="🔄 Queue for Encode",
+            custom_id=f"encode_queue:{path[:80]}",
+        )
+        self.path = path
+        self.title = title
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        from services.handbrake import auto_preset
+        bot = interaction.client
+        media = await bot.db.get_media(self.path)
+        if media is None:
+            await interaction.response.send_message("Movie not found.", ephemeral=True)
+            return
+        preset = auto_preset(media.resolution_width, media.resolution_height)
+        added = await bot.db.add_to_encode_queue(
+            path=media.path,
+            title=media.title,
+            year=media.year,
+            preset=preset,
+            original_codec=media.video_codec,
+            original_size=media.size,
+        )
+        if added:
+            await interaction.response.send_message(
+                f"🔄 **{self.title}** queued for H.265 encoding!", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"**{self.title}** is already in the encode queue.", ephemeral=True
+            )
+        # Disable button
+        if self.view:
+            for item in self.view.children:
+                item.disabled = True
+            await interaction.message.edit(view=self.view)
+
+
+class EncodeView(discord.ui.View):
+    """View with an encode queue button."""
+
+    def __init__(self, path: str, title: str) -> None:
+        super().__init__(timeout=None)
+        self.add_item(EncodeButton(path, title))
+
+
 class CodecCog(commands.Cog):
     """H.265 codec checker — find movies that could be re-encoded."""
 
@@ -75,7 +126,7 @@ class CodecCog(commands.Cog):
             embed.set_thumbnail(url=page_items[0].poster_url)
 
         embed.set_footer(
-            text=f"Page {current_page}/{total_pages} · {len(movies)} non-H.265 movie(s)"
+            text=f"Page {current_page}/{total_pages} · {len(movies)} non-H.265 movie(s) · Use /encode all to queue them"
         )
         await interaction.followup.send(embed=embed)
 
@@ -159,7 +210,11 @@ class CodecCog(commands.Cog):
         embed.add_field(name="📺 Resolution", value=movie.resolution_label, inline=True)
         embed.add_field(name="💾 Size", value=movie.human_size, inline=True)
         embed.set_footer(text=f"File: {movie.filename}")
-        await interaction.followup.send(embed=embed)
+        if movie.is_hevc:
+            await interaction.followup.send(embed=embed)
+        else:
+            view = EncodeView(path=movie.path, title=movie.title or movie.filename)
+            await interaction.followup.send(embed=embed, view=view)
 
     @codec_group.command(
         name="rescan", description="Probe codec for movies not yet scanned"

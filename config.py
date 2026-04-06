@@ -45,6 +45,9 @@ class Config:
     MAX_EBAY_PRICE: float = _safe_float(os.getenv("MAX_EBAY_PRICE"), 0)
     UPGRADE_CHANNEL_ID: int = _safe_int(os.getenv("UPGRADE_CHANNEL_ID"), 0)
 
+    # HandBrakeCLI (optional — enables H.265 re-encoding)
+    HANDBRAKE_PATH: str = os.getenv("HANDBRAKE_PATH", "/opt/homebrew/bin/HandBrakeCLI")
+
     SUPPORTED_EXTENSIONS: set = {".mkv", ".mp4", ".avi", ".m4v", ".ts", ".mov", ".wmv"}
 
     @classmethod

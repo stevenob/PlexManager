@@ -81,6 +81,26 @@ CREATE TABLE IF NOT EXISTS upgrade_deals (
 )
 """
 
+_CREATE_ENCODE_QUEUE = """
+CREATE TABLE IF NOT EXISTS encode_queue (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    path            TEXT UNIQUE NOT NULL,
+    title           TEXT,
+    year            INTEGER,
+    status          TEXT NOT NULL DEFAULT 'queued',
+    preset          TEXT,
+    original_codec  TEXT,
+    original_size   INTEGER,
+    encoded_size    INTEGER,
+    progress        INTEGER DEFAULT 0,
+    queued_at       TEXT NOT NULL,
+    started_at      TEXT,
+    completed_at    TEXT,
+    error           TEXT,
+    CONSTRAINT valid_encode_status CHECK (status IN ('queued', 'encoding', 'done', 'failed', 'cancelled'))
+)
+"""
+
 
 def _row_to_media(row: aiosqlite.Row) -> MediaFile:
     """Convert a sqlite3.Row to the appropriate MediaFile/Movie/Episode dataclass."""
@@ -187,6 +207,10 @@ class MediaDatabase:
         )
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_upgrade_deals_notified ON upgrade_deals (notified)"
+        )
+        await self._db.execute(_CREATE_ENCODE_QUEUE)
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_encode_queue_status ON encode_queue (status)"
         )
         await self._db.commit()
         logger.info("Database ready")
@@ -834,3 +858,111 @@ class MediaDatabase:
         ) as cursor:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Encode queue
+    # ------------------------------------------------------------------
+
+    async def add_to_encode_queue(
+        self,
+        path: str,
+        title: str | None = None,
+        year: int | None = None,
+        preset: str | None = None,
+        original_codec: str | None = None,
+        original_size: int | None = None,
+    ) -> bool:
+        """Add a movie to the encode queue. Returns True if added, False if duplicate."""
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            await self._conn.execute(
+                """
+                INSERT INTO encode_queue (path, title, year, preset, original_codec, original_size, queued_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (path, title, year, preset, original_codec, original_size, now),
+            )
+            await self._conn.commit()
+            return True
+        except Exception:
+            return False
+
+    async def get_encode_queue(self, status: str | None = None, limit: int = 50) -> list[dict]:
+        """Return encode queue entries, optionally filtered by status."""
+        if status:
+            sql = "SELECT * FROM encode_queue WHERE status = ? ORDER BY queued_at ASC LIMIT ?"
+            params = (status, limit)
+        else:
+            sql = "SELECT * FROM encode_queue ORDER BY queued_at ASC LIMIT ?"
+            params = (limit,)
+        async with self._conn.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_next_encode_job(self) -> dict | None:
+        """Return the next queued encode job, or None."""
+        async with self._conn.execute(
+            "SELECT * FROM encode_queue WHERE status = 'queued' ORDER BY queued_at ASC LIMIT 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def update_encode_status(
+        self,
+        path: str,
+        status: str,
+        progress: int | None = None,
+        encoded_size: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Update the status of an encode queue entry."""
+        now = datetime.now(timezone.utc).isoformat()
+        updates = ["status = ?"]
+        params: list = [status]
+
+        if status == "encoding":
+            updates.append("started_at = ?")
+            params.append(now)
+        if status in ("done", "failed"):
+            updates.append("completed_at = ?")
+            params.append(now)
+        if progress is not None:
+            updates.append("progress = ?")
+            params.append(progress)
+        if encoded_size is not None:
+            updates.append("encoded_size = ?")
+            params.append(encoded_size)
+        if error is not None:
+            updates.append("error = ?")
+            params.append(error)
+
+        params.append(path)
+        sql = f"UPDATE encode_queue SET {', '.join(updates)} WHERE path = ?"
+        await self._conn.execute(sql, params)
+        await self._conn.commit()
+
+    async def remove_from_encode_queue(self, path: str) -> bool:
+        """Remove an entry from the encode queue. Returns True if removed."""
+        async with self._conn.execute(
+            "DELETE FROM encode_queue WHERE path = ? AND status IN ('queued', 'cancelled')",
+            (path,),
+        ) as cursor:
+            removed = cursor.rowcount > 0
+        await self._conn.commit()
+        return removed
+
+    async def get_encode_stats(self) -> dict:
+        """Return encode queue statistics."""
+        sql = """
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+                COALESCE(SUM(CASE WHEN status = 'encoding' THEN 1 ELSE 0 END), 0) AS encoding,
+                COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0) AS done,
+                COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
+                COALESCE(SUM(CASE WHEN status = 'done' THEN original_size ELSE 0 END), 0) AS total_original,
+                COALESCE(SUM(CASE WHEN status = 'done' THEN encoded_size ELSE 0 END), 0) AS total_encoded
+            FROM encode_queue
+        """
+        async with self._conn.execute(sql) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else {}
