@@ -210,11 +210,13 @@ class CodecCog(commands.Cog):
         embed.add_field(name="📺 Resolution", value=movie.resolution_label, inline=True)
         embed.add_field(name="💾 Size", value=movie.human_size, inline=True)
         embed.set_footer(text=f"File: {movie.filename}")
-        if movie.is_hevc:
-            await interaction.followup.send(embed=embed)
-        else:
+        # Only show encode button for legacy codecs (MPEG-2, VC-1, etc.)
+        encodable_codecs = ("mpeg2video", "mpeg1video", "vc1", "wmv3", "mpeg4", "msmpeg4v3", "msmpeg4v2")
+        if not movie.is_hevc and movie.video_codec and movie.video_codec.lower() in encodable_codecs:
             view = EncodeView(path=movie.path, title=movie.title or movie.filename)
             await interaction.followup.send(embed=embed, view=view)
+        else:
+            await interaction.followup.send(embed=embed)
 
     @codec_group.command(
         name="rescan", description="Probe codec for movies not yet scanned"

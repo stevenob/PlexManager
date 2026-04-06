@@ -85,6 +85,15 @@ class EncodeCog(commands.Cog):
             )
             return
 
+        skip_codecs = ("h264", "avc", "av1")
+        if movie.video_codec and movie.video_codec.lower() in skip_codecs:
+            await interaction.response.send_message(
+                f"⏭️ **{movie.title}** is {movie.codec_label} — re-encoding would be lossy. "
+                f"Only MPEG-2/VC-1 movies are eligible.",
+                ephemeral=True,
+            )
+            return
+
         preset = auto_preset(movie.resolution_width, movie.resolution_height)
         added = await self.bot.db.add_to_encode_queue(
             path=movie.path,
@@ -125,10 +134,10 @@ class EncodeCog(commands.Cog):
 
         await interaction.response.defer()
 
-        movies = await self.bot.db.get_non_hevc_movies(limit=500)
+        movies = await self.bot.db.get_encodable_movies(limit=500)
         if not movies:
             await interaction.followup.send(
-                "✅ All movies are already H.265!", ephemeral=True
+                "✅ No movies need re-encoding!", ephemeral=True
             )
             return
 

@@ -691,6 +691,23 @@ class MediaDatabase:
             rows = await cursor.fetchall()
         return [_row_to_media(r) for r in rows]
 
+    async def get_encodable_movies(self, limit: int = 500) -> list[MediaFile]:
+        """Return movies that should be re-encoded to H.265.
+
+        Only targets legacy codecs (MPEG-2, VC-1, etc.) — skips H.264 and
+        AV1 since transcoding those would be lossy or counterproductive.
+        """
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND video_codec IS NOT NULL "
+            "AND video_codec IN ('mpeg2video', 'mpeg1video', 'vc1', 'wmv3', 'mpeg4', 'msmpeg4v3', 'msmpeg4v2') "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
     async def get_movies_without_codec(self, limit: int = 500) -> list[MediaFile]:
         """Return movies that haven't been probed for codec yet."""
         sql = (
