@@ -191,40 +191,42 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"{len(movies)} unmatched movie(s)")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="deals", description="Show current Blu-ray deals from Amazon")
+    @app_commands.command(name="deals", description="Show cheapest Blu-ray deals from Amazon")
     async def upgrade_deals(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        deals = await self.bot.db.get_recent_deals(limit=25)
+        deals = await self.bot.db.get_recent_deals(limit=500)
 
         if not deals:
-            msg = "No deals found yet."
-            if False:
-                msg += "\n\n⚠️ Amazon search is not available."
-            await interaction.followup.send(msg, ephemeral=True)
+            await interaction.followup.send("No deals found yet.", ephemeral=True)
             return
+
+        # Keep only the cheapest deal per movie
+        best_by_title: dict[str, dict] = {}
+        for deal in deals:
+            title = deal.get("title", "Unknown")
+            if title not in best_by_title or deal["price"] < best_by_title[title]["price"]:
+                best_by_title[title] = deal
+
+        best = sorted(best_by_title.values(), key=lambda d: d["price"])
 
         embed = discord.Embed(
             title="💰 Blu-ray Deals",
-            description="Below-average-price Blu-ray listings on Amazon",
+            description=f"Cheapest Blu-ray for each movie on Amazon",
             color=COLOR_DEAL,
         )
 
         lines = []
-        for deal in deals:
+        for deal in best[:20]:
             status_icon = "✅ " if deal.get("upgrade_status") == "purchased" else ""
-            savings = deal.get("avg_price", 0) - deal.get("price", 0)
-            shipping = deal.get("shipping_cost", 0)
-            shipping_str = f"${shipping:.2f} ship" if shipping > 0 else "Free ship"
             lines.append(
                 f"{status_icon}**{deal.get('title', 'Unknown')}** — "
-                f"${deal['price']:.2f} · {shipping_str} · "
-                f"Save ${savings:.2f} · "
+                f"**${deal['price']:.2f}** · "
                 f"[Amazon]({deal.get('listing_url', '#')})"
             )
 
-        embed.add_field(name="Deals", value="\n".join(lines[:15]), inline=False)
-        embed.set_footer(text=f"{len(deals)} deal(s)")
+        embed.add_field(name="Best Prices", value="\n".join(lines), inline=False)
+        embed.set_footer(text=f"{len(best)} movie(s) with deals")
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="pricecheck", description="Check Blu-ray prices on Amazon for a specific movie")
