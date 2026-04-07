@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from media.metadata import TMDbClient
 from media.probe import probe_resolution
-from services.ebay import EbayClient, EbaySearchResult
+from services.amazon import AmazonSearchClient, SearchResult
 from storage.database import MediaDatabase
 
 logger = logging.getLogger(__name__)
@@ -22,21 +22,21 @@ class UpgradeScanResult:
     no_bluray_marked: int = 0
     errors: int = 0
     skipped: int = 0
-    details: list[EbaySearchResult] = field(default_factory=list)
+    details: list[SearchResult] = field(default_factory=list)
 
 
 class UpgradeTracker:
-    """Orchestrates the low-res movie → TMDb check → eBay search pipeline."""
+    """Orchestrates the low-res movie → TMDb check → Amazon search pipeline."""
 
     def __init__(
         self,
         db: MediaDatabase,
-        ebay: EbayClient,
+        amazon: AmazonSearchClient,
         tmdb: TMDbClient,
         max_price: float = 0,
     ) -> None:
         self.db = db
-        self.ebay = ebay
+        self.amazon = amazon
         self.tmdb = tmdb
         self.max_price = max_price
 
@@ -102,22 +102,22 @@ class UpgradeTracker:
                     logger.exception("TMDb Blu-ray check failed for '%s'", movie.title)
 
             # Search eBay
-            if not self.ebay.is_configured:
+            if not self.amazon.is_configured:
                 result.skipped += 1
                 continue
 
             try:
-                ebay_result = await self.ebay.search_bluray(
+                search_result = await self.amazon.search_bluray(
                     movie_title=movie.title or movie.filename,
                     year=movie.year,
                     max_price=self.max_price,
                 )
-                result.details.append(ebay_result)
+                result.details.append(search_result)
 
-                if ebay_result.no_results:
+                if search_result.no_results:
                     # No eBay listings at all — mark as no_bluray
                     logger.info(
-                        "No eBay Blu-ray listings for '%s' — marking as no_bluray",
+                        "No Amazon Blu-ray listings for '%s' — marking as no_bluray",
                         movie.title,
                     )
                     await self.db.set_upgrade_status(
@@ -128,14 +128,14 @@ class UpgradeTracker:
                     continue
 
                 # Store any deals found
-                for deal in ebay_result.deals:
+                for deal in search_result.deals:
                     added = await self.db.add_upgrade_deal(
                         path=movie.path,
                         title=movie.title,
-                        ebay_item_id=deal.item_id,
-                        ebay_url=deal.listing_url,
+                        item_id=deal.item_id,
+                        listing_url=deal.listing_url,
                         price=deal.price,
-                        avg_price=ebay_result.average_price,
+                        avg_price=search_result.average_price,
                         condition=deal.condition,
                         shipping_cost=deal.shipping_cost,
                     )
@@ -143,10 +143,10 @@ class UpgradeTracker:
                         result.new_deals_found += 1
 
             except Exception:
-                logger.exception("eBay search failed for '%s'", movie.title)
+                logger.exception("Amazon search failed for '%s'", movie.title)
                 result.errors += 1
 
-            # Small delay between eBay searches to be respectful
+            # Small delay between Amazon searches to be respectful
             await asyncio.sleep(0.5)
 
         logger.info(

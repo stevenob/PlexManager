@@ -809,14 +809,14 @@ class MediaDatabase:
         self,
         path: str,
         title: str | None,
-        ebay_item_id: str,
-        ebay_url: str,
+        item_id: str,
+        listing_url: str,
         price: float,
         avg_price: float,
         condition: str | None = None,
         shipping_cost: float = 0.0,
     ) -> bool:
-        """Store an eBay deal. Returns True if newly inserted, False if duplicate."""
+        """Store a deal. Returns True if newly inserted, False if duplicate."""
         now = datetime.now(timezone.utc).isoformat()
         try:
             await self._conn.execute(
@@ -824,12 +824,12 @@ class MediaDatabase:
                 INSERT INTO upgrade_deals (path, title, ebay_item_id, ebay_url, price, avg_price, shipping_cost, condition, found_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (path, title, ebay_item_id, ebay_url, price, avg_price, shipping_cost, condition, now),
+                (path, title, item_id, listing_url, price, avg_price, shipping_cost, condition, now),
             )
             await self._conn.commit()
             return True
         except Exception:
-            # Duplicate ebay_item_id
+            # Duplicate item_id
             return False
 
     async def get_unnotified_deals(self, limit: int = 50) -> list[dict]:

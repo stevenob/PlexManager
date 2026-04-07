@@ -1,4 +1,4 @@
-"""Blu-ray upgrade finder — scans for low-res movies and searches eBay for deals."""
+"""Blu-ray upgrade finder — scans for low-res movies and searches Amazon for deals."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 
 from config import Config
 from media.probe import ffprobe_available
-from services.ebay import EbayClient
+from services.amazon import AmazonSearchClient
 from services.upgrade_tracker import UpgradeTracker
 
 if TYPE_CHECKING:
@@ -33,14 +33,14 @@ RESULTS_PER_PAGE = 10
 class PurchasedButton(discord.ui.Button):
     """Button to mark a movie as purchased from a deal notification."""
 
-    def __init__(self, path: str, ebay_url: str, title: str) -> None:
+    def __init__(self, path: str, listing_url: str, title: str) -> None:
         super().__init__(
             style=discord.ButtonStyle.success,
             label="✅ Purchased",
             custom_id=f"upgrade_purchased:{path[:80]}",
         )
         self.path = path
-        self.ebay_url = ebay_url
+        self.listing_url = listing_url
         self.title = title
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -48,7 +48,7 @@ class PurchasedButton(discord.ui.Button):
         await bot.db.set_upgrade_status(
             path=self.path,
             status="purchased",
-            purchase_url=self.ebay_url,
+            purchase_url=self.listing_url,
         )
         await interaction.response.send_message(
             f"✅ **{self.title}** marked as purchased!", ephemeral=True
@@ -61,14 +61,14 @@ class PurchasedButton(discord.ui.Button):
 
 
 class DealView(discord.ui.View):
-    """View with eBay link and Purchased button for deal notifications."""
+    """View with Amazon link and Purchased button for deal notifications."""
 
-    def __init__(self, path: str, ebay_url: str, title: str) -> None:
+    def __init__(self, path: str, listing_url: str, title: str) -> None:
         super().__init__(timeout=None)  # Persistent view
         self.add_item(discord.ui.Button(
-            style=discord.ButtonStyle.link, label="View on eBay", url=ebay_url
+            style=discord.ButtonStyle.link, label="View on Amazon", url=listing_url
         ))
-        self.add_item(PurchasedButton(path, ebay_url, title))
+        self.add_item(PurchasedButton(path, listing_url, title))
 
 
 # ── Cog ────────────────────────────────────────────────────────────────────
@@ -79,10 +79,10 @@ class UpgradesCog(commands.Cog):
 
     def __init__(self, bot: PlexManagerBot) -> None:
         self.bot = bot
-        self._ebay = EbayClient(Config.EBAY_APP_ID, Config.EBAY_CERT_ID)
+        self._amazon = AmazonSearchClient()
         self._tracker = UpgradeTracker(
             db=bot.db,
-            ebay=self._ebay,
+            amazon=self._amazon,
             tmdb=bot.tmdb,
             max_price=Config.MAX_EBAY_PRICE,
         )
@@ -99,7 +99,7 @@ class UpgradesCog(commands.Cog):
 
     async def cog_unload(self) -> None:
         self._scan_loop.cancel()
-        await self._ebay.close()
+        await self._amazon.close()
 
     # ── Slash commands ────────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"{len(movies)} unmatched movie(s)")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="deals", description="Show current Blu-ray deals from eBay")
+    @app_commands.command(name="deals", description="Show current Blu-ray deals from Amazon")
     async def upgrade_deals(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
@@ -199,14 +199,14 @@ class UpgradesCog(commands.Cog):
 
         if not deals:
             msg = "No deals found yet."
-            if not Config.ebay_configured():
-                msg += "\n\n⚠️ eBay API is not configured. Add `EBAY_APP_ID` and `EBAY_CERT_ID` to your `.env` file."
+            if False:
+                msg += "\n\n⚠️ Amazon search is not available."
             await interaction.followup.send(msg, ephemeral=True)
             return
 
         embed = discord.Embed(
             title="💰 Blu-ray Deals",
-            description="Below-average-price Blu-ray listings on eBay",
+            description="Below-average-price Blu-ray listings on Amazon",
             color=COLOR_DEAL,
         )
 
@@ -220,21 +220,21 @@ class UpgradesCog(commands.Cog):
                 f"{status_icon}**{deal.get('title', 'Unknown')}** — "
                 f"${deal['price']:.2f} · {shipping_str} · "
                 f"Save ${savings:.2f} · "
-                f"[eBay]({deal.get('ebay_url', '#')})"
+                f"[Amazon]({deal.get('listing_url', '#')})"
             )
 
         embed.add_field(name="Deals", value="\n".join(lines[:15]), inline=False)
         embed.set_footer(text=f"{len(deals)} deal(s)")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="pricecheck", description="Check eBay Blu-ray prices for a specific movie")
+    @app_commands.command(name="pricecheck", description="Check Blu-ray prices on Amazon for a specific movie")
     @app_commands.describe(title="Title of the movie to search for")
     async def upgrade_check(
         self, interaction: discord.Interaction, title: str
     ) -> None:
-        if not Config.ebay_configured():
+        if False:
             await interaction.response.send_message(
-                "⚠️ eBay API is not configured. Add `EBAY_APP_ID` and `EBAY_CERT_ID` to your `.env` file.",
+                "⚠️ Amazon search is not available.",
                 ephemeral=True,
             )
             return
@@ -254,15 +254,15 @@ class UpgradesCog(commands.Cog):
         search_title = movie.title if movie else title
         search_year = movie.year if movie else None
 
-        ebay_result = await self._ebay.search_bluray(
+        search_result = await self._amazon.search_bluray(
             movie_title=search_title,
             year=search_year,
             max_price=Config.MAX_EBAY_PRICE,
         )
 
-        if ebay_result.no_results:
+        if search_result.no_results:
             await interaction.followup.send(
-                f"No Blu-ray listings found for **{search_title}** on eBay.",
+                f"No Blu-ray listings found for **{search_title}** on Amazon.",
                 ephemeral=True,
             )
             return
@@ -270,7 +270,7 @@ class UpgradesCog(commands.Cog):
         year_str = f" ({movie.year})" if movie and movie.year else ""
         embed = discord.Embed(
             title=f"🔍 {search_title}{year_str}",
-            description=f"Blu-ray prices — **${ebay_result.average_price:.2f} average** across {ebay_result.total_found} listings",
+            description=f"Blu-ray prices — **${search_result.average_price:.2f} average** across {search_result.total_found} listings",
             color=COLOR_DEAL,
         )
 
@@ -278,16 +278,16 @@ class UpgradesCog(commands.Cog):
             embed.set_thumbnail(url=movie.poster_url)
 
         # Top row: price stats
-        cheapest = min(ebay_result.listings, key=lambda l: l.price) if ebay_result.listings else None
-        highest = max(ebay_result.listings, key=lambda l: l.price) if ebay_result.listings else None
-        embed.add_field(name="💲 Avg Price", value=f"${ebay_result.average_price:.2f}", inline=True)
+        cheapest = min(search_result.listings, key=lambda l: l.price) if search_result.listings else None
+        highest = max(search_result.listings, key=lambda l: l.price) if search_result.listings else None
+        embed.add_field(name="💲 Avg Price", value=f"${search_result.average_price:.2f}", inline=True)
         embed.add_field(name="📉 Lowest", value=f"${cheapest.price:.2f}" if cheapest else "N/A", inline=True)
         embed.add_field(name="📈 Highest", value=f"${highest.price:.2f}" if highest else "N/A", inline=True)
 
         # Listings as a compact block
         lines = []
-        for listing in ebay_result.listings[:8]:
-            deal_icon = "💰" if listing.price < ebay_result.average_price else "　"
+        for listing in search_result.listings[:8]:
+            deal_icon = "💰" if listing.price < search_result.average_price else "　"
             shipping_str = f"${listing.shipping_cost:.2f} ship" if listing.shipping_cost > 0 else "Free ship"
             lines.append(
                 f"{deal_icon} **${listing.price:.2f}** · {shipping_str} · {listing.condition} — [View]({listing.listing_url})"
@@ -298,14 +298,14 @@ class UpgradesCog(commands.Cog):
         embed.set_footer(text=f"Current: {res_label} · 💰 = below average")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="sellcheck", description="Check what your DVD could sell for on eBay")
+    @app_commands.command(name="sellcheck", description="Check what your DVD could sell for on Amazon")
     @app_commands.describe(title="Title of the movie to price check")
     async def upgrade_sellcheck(
         self, interaction: discord.Interaction, title: str
     ) -> None:
-        if not Config.ebay_configured():
+        if False:
             await interaction.response.send_message(
-                "⚠️ eBay API is not configured. Add `EBAY_APP_ID` and `EBAY_CERT_ID` to your `.env` file.",
+                "⚠️ Amazon search is not available.",
                 ephemeral=True,
             )
             return
@@ -325,14 +325,14 @@ class UpgradesCog(commands.Cog):
         search_title = movie.title if movie else title
         search_year = movie.year if movie else None
 
-        dvd_result = await self._ebay.search_dvd(
+        dvd_result = await self._amazon.search_dvd(
             movie_title=search_title,
             year=search_year,
         )
 
         if dvd_result.no_results:
             await interaction.followup.send(
-                f"No DVD listings found for **{search_title}** on eBay.",
+                f"No DVD listings found for **{search_title}** on Amazon.",
                 ephemeral=True,
             )
             return
@@ -354,14 +354,14 @@ class UpgradesCog(commands.Cog):
         embed.add_field(name="📉 Lowest", value=f"${cheapest.price:.2f}" if cheapest else "N/A", inline=True)
 
         res_label = movie.resolution_label if movie and movie.resolution_height else "Unknown"
-        embed.set_footer(text=f"Current: {res_label} · {dvd_result.total_found} DVD listings on eBay")
+        embed.set_footer(text=f"Current: {res_label} · {dvd_result.total_found} DVD listings on Amazon")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="dealscan", description="Trigger a Blu-ray deal search on eBay")
+    @app_commands.command(name="dealscan", description="Trigger a Blu-ray deal search on Amazon")
     async def upgrade_scan(self, interaction: discord.Interaction) -> None:
-        if not Config.ebay_configured():
+        if False:
             await interaction.response.send_message(
-                "⚠️ eBay API is not configured. Add `EBAY_APP_ID` and `EBAY_CERT_ID` to your `.env` file.",
+                "⚠️ Amazon search is not available.",
                 ephemeral=True,
             )
             return
@@ -395,7 +395,7 @@ class UpgradesCog(commands.Cog):
             inline=False,
         )
         embed.add_field(
-            name="eBay Search",
+            name="Amazon Search",
             value=(
                 f"**Movies checked:** {result.movies_scanned} · "
                 f"**New deals:** {result.new_deals_found} · "
@@ -486,7 +486,7 @@ class UpgradesCog(commands.Cog):
             return
         self._scan_counter = 0
 
-        if not Config.ebay_configured():
+        if False:
             return
 
         logger.info("Starting scheduled upgrade scan")
@@ -544,7 +544,7 @@ class UpgradesCog(commands.Cog):
 
             view = DealView(
                 path=deal.get("path", ""),
-                ebay_url=deal.get("ebay_url", "#"),
+                listing_url=deal.get("listing_url", "#"),
                 title=title,
             )
 
