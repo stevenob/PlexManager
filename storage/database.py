@@ -634,6 +634,7 @@ class MediaDatabase:
             "AND resolution_height > 0 "
             "AND resolution_height <= ? "
             "AND (resolution_width IS NULL OR resolution_width < 1920) "
+            f"GROUP BY title "
             f"ORDER BY {order} LIMIT ?"
         )
         async with self._conn.execute(sql, (max_height, limit)) as cursor:
