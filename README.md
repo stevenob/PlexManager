@@ -17,21 +17,10 @@ A Discord bot that connects to your NAS media library, providing search, browsin
 - **📜 Change History** — `/notifications` to view recent file change events
 - **📂 Multiple Media Paths** — Scan and watch multiple directories (e.g. Movies + TV Shows)
 
-### 📀 Blu-ray Upgrade Finder
+### 📀 DVD Upgrade Tracker
 
-- **`/upgrades list`** — View all DVD-quality (≤480p) movies that could be upgraded to Blu-ray
-- **`/upgrades check <title>`** — Check eBay Blu-ray prices for a specific movie
-- **`/upgrades sellcheck <title>`** — Check what your DVD could sell for on eBay
-- **`/upgrades deals`** — View all Blu-ray deals found below average price
-- **`/upgrades scan`** — Trigger a full eBay deal search across all low-res movies
-- **`/upgrades status`** — Dashboard showing tracked, purchased, ignored, and unmatched counts
-- **`/upgrades purchased <title>`** — Mark a movie as purchased (stops deal alerts)
-- **`/upgrades ignore <title>`** — Exclude a movie from future upgrade scans
-- **`/upgrades unmatched`** — View movies that failed TMDb lookup for manual fixing
-- **`/upgrades rescan_resolution`** — Probe resolution for movies not yet scanned
-- **Auto-scheduling** — Daily eBay scans with deal notifications posted to a dedicated channel
-- **Smart filtering** — TMDb release checks to auto-skip movies with no Blu-ray release
-- **Interactive notifications** — Deal embeds include "View on eBay" and "Purchased" buttons
+- **`/lowres`** — View all DVD-quality (≤480p) movies that could be upgraded to Blu-ray
+- **`/unmatched`** — View movies that failed TMDb lookup for manual fixing
 
 ## Prerequisites
 
@@ -40,7 +29,6 @@ A Discord bot that connects to your NAS media library, providing search, browsin
 - A TMDb API key ([get one here](https://www.themoviedb.org/settings/api))
 - NAS media library mounted as a local path
 - **ffmpeg** (for resolution detection) — `brew install ffmpeg`
-- **eBay Developer account** (optional, for deal searching) — [apply here](https://developer.ebay.com/)
 - **HandBrakeCLI** (optional, for H.265 re-encoding) — `brew install handbrake`
 
 ### 🎞️ H.265 Codec Checker & Re-encoder
@@ -149,13 +137,7 @@ The scanner expects your media organized in a standard layout:
 | `/rescan` | Trigger a library rescan + probe codec/resolution for new files |
 | `/status` | Combined dashboard: library, codecs, encoding, upgrades, services |
 | `/notifications [count]` | View recent file change history |
-| `/lowres` | View all low-res movies (≤480p) |
-| `/pricecheck <title>` | Check eBay Blu-ray prices for a movie |
-| `/sellcheck <title>` | Check what your DVD could sell for |
-| `/deals` | View Blu-ray deals found below average price |
-| `/dealscan` | Trigger a full eBay deal search |
-| `/purchased <title>` | Mark a movie as purchased |
-| `/ignore <title>` | Exclude a movie from upgrade scans |
+| `/lowres` | View all DVD-quality movies (≤480p) |
 | `/unmatched` | Movies that failed TMDb lookup |
 | `/encode <title>` | Queue a movie for H.265 re-encoding |
 | `/encodeall` | Queue all eligible movies (MPEG-2, VC-1) for encoding |
@@ -174,11 +156,6 @@ The scanner expects your media organized in a standard layout:
 | `LOG_LEVEL` | Logging level (default: `INFO`) | No |
 | `SCAN_INTERVAL_MINUTES` | Periodic scan interval (default: `60`) | No |
 | `DB_PATH` | SQLite database path (default: `plexmanager.db`) | No |
-| `EBAY_APP_ID` | eBay application ID for Browse API | No |
-| `EBAY_CERT_ID` | eBay certificate ID for OAuth | No |
-| `UPGRADE_CHANNEL_ID` | Dedicated channel for upgrade deal notifications | No |
-| `UPGRADE_SCAN_INTERVAL_HOURS` | How often to scan eBay for deals (default: `24`) | No |
-| `MAX_EBAY_PRICE` | Maximum price cap for eBay searches (default: no cap) | No |
 | `HANDBRAKE_PATH` | Path to HandBrakeCLI (default: `/opt/homebrew/bin/HandBrakeCLI`) | No |
 
 > **Note:** The legacy `MEDIA_PATH` variable (single path) is still supported for backwards compatibility.
