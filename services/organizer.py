@@ -65,21 +65,32 @@ def clean_filename(name: str) -> str:
     return cleaned or "Untitled"
 
 
-def build_movie_path(base_dir: str, title: str, year: int | None, ext: str = ".mkv", edition: str | None = None) -> str:
-    """Build the standard movie path: base/Title (Year)/Title (Year).ext
-    
-    With edition: base/Title - Edition (Year)/Title - Edition (Year).ext
+def build_movie_path(
+    base_dir: str, title: str, year: int | None, ext: str = ".mkv",
+    edition: str | None = None, resolution: str | None = None,
+) -> str:
+    """Build Plex-standard movie path.
+
+    Single:      base/Title (Year)/Title (Year).ext
+    Edition:     base/Title (Year)/Title (Year) - edition-Director's Cut.ext
+    Resolution:  base/Title (Year)/Title (Year) - edition-Director's Cut - 1080p.ext
+
+    Multiple editions/versions all go in the SAME Title (Year)/ folder.
     """
     clean_title = clean_filename(title)
-    if edition:
-        name_base = f"{clean_title} - {edition}"
-    else:
-        name_base = clean_title
     if year:
-        folder_name = f"{name_base} ({year})"
+        folder_name = f"{clean_title} ({year})"
     else:
-        folder_name = name_base
-    filename = folder_name + ext
+        folder_name = clean_title
+
+    # Filename includes edition and resolution tags, folder does not
+    filename_base = folder_name
+    if edition:
+        filename_base += f" - edition-{edition}"
+    if resolution:
+        filename_base += f" - {resolution}"
+    filename = filename_base + ext
+
     return os.path.join(base_dir, folder_name, filename)
 
 
@@ -176,15 +187,30 @@ async def propose_rename(
     base_dir = None
     for mp in media_paths:
         if filepath.startswith(mp):
-            # Go one level into the media path (e.g., /Volumes/ServerShare/Movies)
             base_dir = mp
             break
     if base_dir is None:
         base_dir = os.path.dirname(os.path.dirname(filepath))
 
+    # Detect resolution from filename for multi-version tagging
+    resolution = None
+    res_m = re.search(r"(2160p|4K|1080p|720p|576p|480p)", filename_stem, re.IGNORECASE)
+    if res_m:
+        resolution = res_m.group(1)
+
     # Build proposed path
-    proposed_path = build_movie_path(base_dir, tmdb_title, tmdb_year, ext, edition=edition)
+    proposed_path = build_movie_path(base_dir, tmdb_title, tmdb_year, ext, edition=edition, resolution=resolution)
     proposed_filename = os.path.basename(proposed_path)
+
+    # Check if target folder already has a file — avoid overwriting
+    proposed_dir = os.path.dirname(proposed_path)
+    if os.path.isdir(proposed_dir) and os.path.normpath(filepath) != os.path.normpath(proposed_path):
+        if os.path.exists(proposed_path):
+            # Exact filename collision — add resolution or counter to differentiate
+            if not resolution:
+                resolution = "v2"
+            proposed_path = build_movie_path(base_dir, tmdb_title, tmdb_year, ext, edition=edition, resolution=resolution)
+            proposed_filename = os.path.basename(proposed_path)
 
     # Check if already correct
     already_correct = os.path.normpath(filepath) == os.path.normpath(proposed_path)
