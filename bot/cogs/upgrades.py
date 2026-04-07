@@ -58,12 +58,7 @@ class UpgradesCog(commands.Cog):
             rating_str = f"⭐ {movie.rating:.1f}" if movie.rating else "No rating"
             embed.add_field(
                 name=f"📀 {movie.title}{year_str}",
-                value=(
-                    f"**{rating_str}** · "
-                    f"{movie.resolution_label} · "
-                    f"{movie.codec_label} · "
-                    f"{movie.human_size}"
-                ),
+                value=f"{rating_str} · {movie.resolution_label}",
                 inline=False,
             )
 
