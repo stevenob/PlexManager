@@ -222,7 +222,7 @@ class UpgradesCog(commands.Cog):
             lines.append(
                 f"{status_icon}**{deal.get('title', 'Unknown')}** — "
                 f"**${deal['price']:.2f}** · "
-                f"[Amazon]({deal.get('listing_url', '#')})"
+                f"[Amazon]({deal.get('ebay_url', '#')})"
             )
 
         embed.add_field(name="Best Prices", value="\n".join(lines), inline=False)
@@ -546,7 +546,7 @@ class UpgradesCog(commands.Cog):
 
             view = DealView(
                 path=deal.get("path", ""),
-                listing_url=deal.get("listing_url", "#"),
+                listing_url=deal.get("ebay_url", "#"),
                 title=title,
             )
 
