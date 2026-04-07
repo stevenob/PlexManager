@@ -92,6 +92,10 @@ def _parse_results(html: str) -> list[dict]:
         if "AdHolder" in block or "s-sponsored" in block:
             continue
 
+        # Skip Prime Video / streaming results
+        if "Prime Video" in block or "Instant Video" in block:
+            continue
+
         # Extract title
         title_m = _TITLE_RE.search(block)
         if not title_m:
@@ -210,7 +214,7 @@ class AmazonSearchClient:
         if year:
             query = f"{movie_title} {year} Blu-ray"
 
-        html = await self._search(query)
+        html = await self._search(query, category="dvd")  # dvd category = physical media only
         if html is None:
             result.no_results = True
             return result
@@ -221,7 +225,6 @@ class AmazonSearchClient:
             return result
 
         for item in raw[:limit]:
-            # Skip free/Kindle results and suspiciously cheap non-physical items
             if item["price"] < 3.0:
                 continue
             if max_price > 0 and item["price"] > max_price:
@@ -264,7 +267,7 @@ class AmazonSearchClient:
         if year:
             query = f"{movie_title} {year} DVD"
 
-        html = await self._search(query)
+        html = await self._search(query, category="dvd")  # physical media only
         if html is None:
             result.no_results = True
             return result
