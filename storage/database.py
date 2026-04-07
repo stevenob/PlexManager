@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import aiosqlite
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS media_files (
     resolution_width  INTEGER,
     resolution_height INTEGER,
     video_codec       TEXT,
-    has_external_subs INTEGER DEFAULT 0
+    has_external_subs INTEGER DEFAULT 0,
+    organize_status   TEXT
 )
 """
 
@@ -185,6 +187,10 @@ class MediaDatabase:
             pass  # Column already exists
         try:
             await self._db.execute("ALTER TABLE media_files ADD COLUMN has_external_subs INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
+        try:
+            await self._db.execute("ALTER TABLE media_files ADD COLUMN organize_status TEXT")
         except Exception:
             pass  # Column already exists
 
@@ -1056,3 +1062,50 @@ class MediaDatabase:
         async with self._conn.execute(sql) as cursor:
             row = await cursor.fetchone()
         return dict(row) if row else {}
+
+    # ------------------------------------------------------------------
+    # Movie organizer
+    # ------------------------------------------------------------------
+
+    async def get_misnamed_movies(self, limit: int = 500) -> list[MediaFile]:
+        """Return movies that haven't been checked for organization."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND (organize_status IS NULL OR organize_status = 'needs_review') "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def set_organize_status(self, path: str, status: str) -> None:
+        """Set organize status: 'organized', 'skipped', 'needs_review'."""
+        await self._conn.execute(
+            "UPDATE media_files SET organize_status = ? WHERE path = ?",
+            (status, path),
+        )
+        await self._conn.commit()
+
+    async def update_media_path(self, old_path: str, new_path: str) -> None:
+        """Update a media file's path after rename."""
+        new_filename = os.path.basename(new_path)
+        await self._conn.execute(
+            "UPDATE media_files SET path = ?, filename = ?, organize_status = 'organized' WHERE path = ?",
+            (new_path, new_filename, old_path),
+        )
+        await self._conn.commit()
+
+    async def get_organize_stats(self) -> dict:
+        """Return organization statistics."""
+        sql = """
+            SELECT
+                COALESCE(organize_status, 'unchecked') as status,
+                COUNT(*) as count
+            FROM media_files
+            WHERE media_type = 'movie'
+            GROUP BY organize_status
+        """
+        async with self._conn.execute(sql) as cursor:
+            rows = await cursor.fetchall()
+        return {row["status"]: row["count"] for row in rows}
