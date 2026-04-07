@@ -270,40 +270,51 @@ def execute_rename(proposal: RenameProposal) -> bool:
         if os.path.normpath(src) == os.path.normpath(dst):
             return True  # Already correct
 
-        # Create destination directory
         dst_dir = os.path.dirname(dst)
+        src_dir = os.path.dirname(src)
+
+        # If the file is in the same directory as the target folder name
+        # (e.g. Movies/Saw V (2008).mkv → Movies/Saw V (2008)/Saw V (2008).mkv)
+        # we need to rename the file first to avoid the "move into itself" error.
+        temp_path = None
+        if os.path.normpath(src_dir) == os.path.normpath(os.path.dirname(dst_dir)):
+            # Source file is a sibling of the target folder — rename to temp first
+            temp_path = src + ".tmp_rename"
+            os.rename(src, temp_path)
+            src = temp_path
+
+        # Create destination directory
         os.makedirs(dst_dir, exist_ok=True)
 
         # Move the main video file
         shutil.move(src, dst)
-        logger.info("Renamed: %s → %s", src, dst)
+        logger.info("Renamed: %s → %s", proposal.current_path, dst)
 
-        # Move associated files (srt, nfo, jpg, png) from the same directory
-        src_dir = os.path.dirname(src)
-        src_stem = os.path.splitext(os.path.basename(src))[0]
+        # Move associated files (srt, nfo, jpg, png) from the original directory
+        orig_dir = os.path.dirname(proposal.current_path)
+        orig_stem = os.path.splitext(os.path.basename(proposal.current_path))[0]
         dst_stem = os.path.splitext(os.path.basename(dst))[0]
 
-        if os.path.isdir(src_dir):
-            for f in os.listdir(src_dir):
-                if f.startswith(src_stem) and not f.endswith(os.path.splitext(src)[1]):
-                    # This is an associated file (e.g., movie.en.srt, movie.nfo)
-                    suffix = f[len(src_stem):]
+        if os.path.isdir(orig_dir) and os.path.normpath(orig_dir) != os.path.normpath(dst_dir):
+            for f in os.listdir(orig_dir):
+                if f.startswith(orig_stem) and not f.endswith(os.path.splitext(proposal.current_path)[1]):
+                    suffix = f[len(orig_stem):]
                     new_name = dst_stem + suffix
-                    src_assoc = os.path.join(src_dir, f)
+                    src_assoc = os.path.join(orig_dir, f)
                     dst_assoc = os.path.join(dst_dir, new_name)
                     shutil.move(src_assoc, dst_assoc)
                     logger.info("Moved associated: %s → %s", f, new_name)
 
             # Also move non-stem files (poster.jpg, fanart.jpg, etc.)
-            for f in os.listdir(src_dir):
+            for f in os.listdir(orig_dir):
                 ext = os.path.splitext(f)[1].lower()
-                if ext in (".jpg", ".png", ".nfo") and not f.startswith(src_stem):
-                    shutil.move(os.path.join(src_dir, f), os.path.join(dst_dir, f))
+                if ext in (".jpg", ".png", ".nfo") and not f.startswith(orig_stem):
+                    shutil.move(os.path.join(orig_dir, f), os.path.join(dst_dir, f))
 
             # Remove old directory if empty
             try:
-                os.rmdir(src_dir)
-                logger.info("Removed empty directory: %s", src_dir)
+                os.rmdir(orig_dir)
+                logger.info("Removed empty directory: %s", orig_dir)
             except OSError:
                 pass  # Directory not empty
 
