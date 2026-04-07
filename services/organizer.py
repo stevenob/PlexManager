@@ -18,6 +18,28 @@ _STANDARD_PATTERN = re.compile(r"^(.+?)\s*\((\d{4})\)$")
 _ILLEGAL_CHARS = re.compile(r'[/\\:*?"<>|]')
 
 
+# Known edition tags to detect and preserve
+_EDITION_TAGS = [
+    "Director's Cut", "Directors Cut",
+    "Extended Cut", "Extended Edition", "Extended",
+    "Unrated", "Unrated Edition",
+    "Special Edition",
+    "Theatrical Cut", "Theatrical",
+    "Cinematic Cut",
+    "Ultimate Edition", "Ultimate Cut",
+    "Final Cut",
+    "Remastered",
+    "Anniversary Edition",
+    "Criterion Edition",
+    "Collector's Edition",
+    "Deluxe Edition",
+]
+_EDITION_RE = re.compile(
+    r"[\[\(\-\s]*(" + "|".join(re.escape(t) for t in _EDITION_TAGS) + r")[\]\)\s]*",
+    re.IGNORECASE,
+)
+
+
 @dataclass
 class RenameProposal:
     """A proposed rename for a movie file."""
@@ -31,6 +53,7 @@ class RenameProposal:
     tmdb_rating: float | None
     tmdb_poster: str | None
     confidence: str  # "high", "medium", "low"
+    edition: str | None = None  # e.g. "Director's Cut"
     already_correct: bool = False
 
 
@@ -42,13 +65,20 @@ def clean_filename(name: str) -> str:
     return cleaned or "Untitled"
 
 
-def build_movie_path(base_dir: str, title: str, year: int | None, ext: str = ".mkv") -> str:
-    """Build the standard movie path: base/Title (Year)/Title (Year).ext"""
+def build_movie_path(base_dir: str, title: str, year: int | None, ext: str = ".mkv", edition: str | None = None) -> str:
+    """Build the standard movie path: base/Title (Year)/Title (Year).ext
+    
+    With edition: base/Title - Edition (Year)/Title - Edition (Year).ext
+    """
     clean_title = clean_filename(title)
-    if year:
-        folder_name = f"{clean_title} ({year})"
+    if edition:
+        name_base = f"{clean_title} - {edition}"
     else:
-        folder_name = clean_title
+        name_base = clean_title
+    if year:
+        folder_name = f"{name_base} ({year})"
+    else:
+        folder_name = name_base
     filename = folder_name + ext
     return os.path.join(base_dir, folder_name, filename)
 
@@ -108,10 +138,19 @@ async def propose_rename(
 
     # Clean up title for search
     search_title = current_title
-    # Remove common tags from title
+    # Detect edition tag before stripping
+    edition = None
+    edition_m = _EDITION_RE.search(search_title)
+    if edition_m:
+        edition = edition_m.group(1).strip()
+    # Also check filename for edition
+    if not edition:
+        edition_m = _EDITION_RE.search(filename_stem)
+        if edition_m:
+            edition = edition_m.group(1).strip()
+    # Remove common tags from title for TMDb search
     for tag in ["480p", "720p", "1080p", "2160p", "4K", "AAC", "AC3", "DTS",
-                "BluRay", "BRRip", "DVDRip", "WEB-DL", "x264", "x265", "HEVC",
-                "Special Edition", "Unrated", "Extended"]:
+                "BluRay", "BRRip", "DVDRip", "WEB-DL", "x264", "x265", "HEVC"] + _EDITION_TAGS:
         search_title = re.sub(re.escape(tag), "", search_title, flags=re.IGNORECASE)
     search_title = re.sub(r"\s+", " ", search_title).strip(" -.()")
     search_title = unicodedata.normalize("NFC", search_title)
@@ -144,7 +183,7 @@ async def propose_rename(
         base_dir = os.path.dirname(os.path.dirname(filepath))
 
     # Build proposed path
-    proposed_path = build_movie_path(base_dir, tmdb_title, tmdb_year, ext)
+    proposed_path = build_movie_path(base_dir, tmdb_title, tmdb_year, ext, edition=edition)
     proposed_filename = os.path.basename(proposed_path)
 
     # Check if already correct
@@ -171,6 +210,7 @@ async def propose_rename(
         tmdb_rating=tmdb_rating,
         tmdb_poster=tmdb_poster,
         confidence=confidence,
+        edition=edition,
         already_correct=already_correct,
     )
 

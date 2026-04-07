@@ -166,9 +166,11 @@ class OrganizerCog(commands.Cog):
                 proposal.confidence, "⚪"
             )
 
+            edition_str = f" — {proposal.edition}" if proposal.edition else ""
+
             embed = discord.Embed(
                 title="📂 Rename Proposal",
-                description=f"**{proposal.tmdb_title}{year_str}** {rating_str}",
+                description=f"**{proposal.tmdb_title}{edition_str}{year_str}** {rating_str}",
                 color=COLOR_ORGANIZE,
             )
 
@@ -245,9 +247,11 @@ class OrganizerCog(commands.Cog):
             proposal.confidence, "⚪"
         )
 
+        edition_str = f" — {proposal.edition}" if proposal.edition else ""
+
         embed = discord.Embed(
             title="📂 Rename Proposal",
-            description=f"**{proposal.tmdb_title}{year_str}** {rating_str}",
+            description=f"**{proposal.tmdb_title}{edition_str}{year_str}** {rating_str}",
             color=COLOR_ORGANIZE,
         )
 
