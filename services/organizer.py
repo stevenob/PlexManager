@@ -139,13 +139,30 @@ async def propose_rename(
     for idx, segment in enumerate(parts_lower):
         if segment == "movies" and idx + 1 < len(parts):
             movie_dir = parts[idx + 1]
-            m = _STANDARD_PATTERN.match(movie_dir)
-            if m:
-                current_title = m.group(1).strip()
-                current_year = int(m.group(2))
+            # Check if the next segment is a folder or the file itself
+            if movie_dir == filename.lower():
+                # File is directly in Movies/ — no subfolder, parse from filename
+                m = _STANDARD_PATTERN.match(filename_stem)
+                if m:
+                    current_title = m.group(1).strip()
+                    current_year = int(m.group(2))
+                else:
+                    current_title = filename_stem
             else:
-                current_title = movie_dir
+                m = _STANDARD_PATTERN.match(movie_dir)
+                if m:
+                    current_title = m.group(1).strip()
+                    current_year = int(m.group(2))
+                else:
+                    current_title = movie_dir
             break
+
+    # If still no year, try parsing from filename stem as fallback
+    if current_year is None:
+        m = _STANDARD_PATTERN.match(filename_stem)
+        if m:
+            current_title = m.group(1).strip()
+            current_year = int(m.group(2))
 
     # Clean up title for search
     search_title = current_title
