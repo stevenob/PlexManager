@@ -195,20 +195,11 @@ class UpgradesCog(commands.Cog):
     async def upgrade_deals(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        deals = await self.bot.db.get_recent_deals(limit=500)
+        best = await self.bot.db.get_best_deals(limit=20)
 
-        if not deals:
+        if not best:
             await interaction.followup.send("No deals found yet.", ephemeral=True)
             return
-
-        # Keep only the cheapest deal per movie
-        best_by_title: dict[str, dict] = {}
-        for deal in deals:
-            title = deal.get("title", "Unknown")
-            if title not in best_by_title or deal["price"] < best_by_title[title]["price"]:
-                best_by_title[title] = deal
-
-        best = sorted(best_by_title.values(), key=lambda d: d["price"])
 
         embed = discord.Embed(
             title="💰 Blu-ray Deals",
@@ -217,7 +208,7 @@ class UpgradesCog(commands.Cog):
         )
 
         lines = []
-        for deal in best[:20]:
+        for deal in best:
             status_icon = "✅ " if deal.get("upgrade_status") == "purchased" else ""
             lines.append(
                 f"{status_icon}**{deal.get('title', 'Unknown')}** — "

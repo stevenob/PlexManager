@@ -876,6 +876,26 @@ class MediaDatabase:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+    async def get_best_deals(self, limit: int = 25) -> list[dict]:
+        """Return the cheapest deal per movie, sorted by price."""
+        async with self._conn.execute(
+            """
+            SELECT d.*, s.status as upgrade_status
+            FROM upgrade_deals d
+            LEFT JOIN upgrade_status s ON d.path = s.path
+            INNER JOIN (
+                SELECT path, MIN(price) as min_price
+                FROM upgrade_deals
+                GROUP BY path
+            ) best ON d.path = best.path AND d.price = best.min_price
+            GROUP BY d.path
+            ORDER BY d.price ASC LIMIT ?
+            """,
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Encode queue
     # ------------------------------------------------------------------
