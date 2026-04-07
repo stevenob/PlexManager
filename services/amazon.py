@@ -221,7 +221,14 @@ class AmazonSearchClient:
             return result
 
         for item in raw[:limit]:
+            # Skip free/Kindle results and suspiciously cheap non-physical items
+            if item["price"] < 3.0:
+                continue
             if max_price > 0 and item["price"] > max_price:
+                continue
+            # Skip results that don't mention Blu-ray in the title
+            title_lower = item["title"].lower()
+            if "blu-ray" not in title_lower and "blu ray" not in title_lower and "bluray" not in title_lower:
                 continue
             listing = Listing(
                 item_id=item["asin"],
@@ -268,6 +275,11 @@ class AmazonSearchClient:
             return result
 
         for item in raw[:limit]:
+            if item["price"] < 1.0:
+                continue
+            title_lower = item["title"].lower()
+            if "dvd" not in title_lower:
+                continue
             listing = Listing(
                 item_id=item["asin"],
                 title=item["title"],
