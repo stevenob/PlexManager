@@ -208,16 +208,21 @@ class UpgradesCog(commands.Cog):
         )
 
         lines = []
+        total_len = 0
         for deal in best:
             status_icon = "✅ " if deal.get("upgrade_status") == "purchased" else ""
-            lines.append(
+            line = (
                 f"{status_icon}**{deal.get('title', 'Unknown')}** — "
                 f"**${deal['price']:.2f}** · "
                 f"[Amazon]({deal.get('ebay_url', '#')})"
             )
+            if total_len + len(line) + 1 > 950:  # Discord field limit is 1024
+                break
+            lines.append(line)
+            total_len += len(line) + 1
 
         embed.add_field(name="Best Prices", value="\n".join(lines), inline=False)
-        embed.set_footer(text=f"{len(best)} movie(s) with deals")
+        embed.set_footer(text=f"Showing {len(lines)} of {len(best)} movie(s) with deals")
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="pricecheck", description="Check Blu-ray prices on Amazon for a specific movie")
