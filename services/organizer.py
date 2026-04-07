@@ -33,6 +33,11 @@ _EDITION_TAGS = [
     "Criterion Edition",
     "Collector's Edition",
     "Deluxe Edition",
+    "Colorized",
+    "Black and White",
+    "IMAX Edition", "IMAX",
+    "3D",
+    "Open Matte",
 ]
 _EDITION_RE = re.compile(
     r"[\[\(\-\s]*(" + "|".join(re.escape(t) for t in _EDITION_TAGS) + r")[\]\)\s]*",
