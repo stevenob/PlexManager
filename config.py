@@ -48,6 +48,11 @@ class Config:
     # HandBrakeCLI (optional — enables H.265 re-encoding)
     HANDBRAKE_PATH: str = os.getenv("HANDBRAKE_PATH", "/opt/homebrew/bin/HandBrakeCLI")
 
+    # OpenSubtitles (optional — enables subtitle downloading)
+    OPENSUBTITLES_API_KEY: str = os.getenv("OPENSUBTITLES_API_KEY", "")
+    OPENSUBTITLES_USERNAME: str = os.getenv("OPENSUBTITLES_USERNAME", "")
+    OPENSUBTITLES_PASSWORD: str = os.getenv("OPENSUBTITLES_PASSWORD", "")
+
     SUPPORTED_EXTENSIONS: set = {".mkv", ".mp4", ".avi", ".m4v", ".ts", ".mov", ".wmv"}
 
     @classmethod
@@ -69,6 +74,11 @@ class Config:
     def ebay_configured(cls) -> bool:
         """Return True if both eBay API credentials are set."""
         return bool(cls.EBAY_APP_ID and cls.EBAY_CERT_ID)
+
+    @classmethod
+    def opensubtitles_configured(cls) -> bool:
+        """Return True if OpenSubtitles API key is set."""
+        return bool(cls.OPENSUBTITLES_API_KEY)
 
     @classmethod
     def warn_missing_tools(cls) -> list[str]:

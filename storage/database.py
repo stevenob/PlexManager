@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS media_files (
     director        TEXT,
     resolution_width  INTEGER,
     resolution_height INTEGER,
-    video_codec       TEXT
+    video_codec       TEXT,
+    has_external_subs INTEGER DEFAULT 0
 )
 """
 
@@ -180,6 +181,10 @@ class MediaDatabase:
                 pass  # Column already exists
         try:
             await self._db.execute("ALTER TABLE media_files ADD COLUMN video_codec TEXT")
+        except Exception:
+            pass  # Column already exists
+        try:
+            await self._db.execute("ALTER TABLE media_files ADD COLUMN has_external_subs INTEGER DEFAULT 0")
         except Exception:
             pass  # Column already exists
 
@@ -745,6 +750,44 @@ class MediaDatabase:
         async with self._conn.execute(sql) as cursor:
             rows = await cursor.fetchall()
         return {row["codec"]: row["count"] for row in rows}
+
+    # ------------------------------------------------------------------
+    # Subtitle tracking
+    # ------------------------------------------------------------------
+
+    async def get_movies_without_subs(self, limit: int = 500) -> list[MediaFile]:
+        """Return movies that don't have external subtitle files."""
+        sql = (
+            "SELECT * FROM media_files "
+            "WHERE media_type = 'movie' "
+            "AND has_external_subs = 0 "
+            "ORDER BY title LIMIT ?"
+        )
+        async with self._conn.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_media(r) for r in rows]
+
+    async def update_subs_status(self, path: str, has_subs: bool) -> None:
+        """Update whether a movie has external subtitle files."""
+        await self._conn.execute(
+            "UPDATE media_files SET has_external_subs = ? WHERE path = ?",
+            (1 if has_subs else 0, path),
+        )
+        await self._conn.commit()
+
+    async def get_subs_stats(self) -> dict:
+        """Return subtitle statistics for movies."""
+        sql = """
+            SELECT
+                COUNT(*) as total,
+                COALESCE(SUM(CASE WHEN has_external_subs = 1 THEN 1 ELSE 0 END), 0) as with_subs,
+                COALESCE(SUM(CASE WHEN has_external_subs = 0 THEN 1 ELSE 0 END), 0) as without_subs
+            FROM media_files
+            WHERE media_type = 'movie'
+        """
+        async with self._conn.execute(sql) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else {"total": 0, "with_subs": 0, "without_subs": 0}
 
     # ------------------------------------------------------------------
     # Upgrade tracking
