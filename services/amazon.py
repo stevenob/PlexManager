@@ -103,17 +103,24 @@ def _parse_results(html: str) -> list[dict]:
         title = title_m.group(1).strip()
         title = re.sub(r"<[^>]+>", "", title)  # Strip any inner HTML tags
 
-        # Extract price
-        whole_m = _PRICE_WHOLE.search(block)
-        frac_m = _PRICE_FRAC.search(block)
-        if not whole_m:
+        # Extract price — find all prices in the block and take the highest
+        # (Amazon shows rental/streaming prices first, physical price last)
+        all_whole = _PRICE_WHOLE.findall(block)
+        all_frac = _PRICE_FRAC.findall(block)
+        if not all_whole:
             continue
-        whole = whole_m.group(1).replace(",", "")
-        frac = frac_m.group(1) if frac_m else "00"
-        try:
-            price = float(f"{whole}.{frac}")
-        except ValueError:
+
+        all_prices = []
+        for idx_p, whole in enumerate(all_whole):
+            frac = all_frac[idx_p] if idx_p < len(all_frac) else "00"
+            try:
+                all_prices.append(float(f"{whole.replace(',', '')}.{frac}"))
+            except ValueError:
+                continue
+        if not all_prices:
             continue
+        # Use the highest price — that's the physical product, not the rental
+        price = max(all_prices)
 
         # Extract image
         img_m = _IMG_RE.search(block)
