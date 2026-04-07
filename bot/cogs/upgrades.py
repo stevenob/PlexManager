@@ -25,14 +25,14 @@ class UpgradesCog(commands.Cog):
     def __init__(self, bot: PlexManagerBot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="lowres", description="Show all DVD-quality movies in your library")
+    @app_commands.command(name="lowres", description="Show DVD-quality movies ranked by rating")
     @app_commands.describe(page="Page number (default 1)")
     async def lowres(
         self, interaction: discord.Interaction, page: Optional[int] = None
     ) -> None:
         await interaction.response.defer()
 
-        movies = await self.bot.db.get_low_res_movies(max_height=480, limit=500)
+        movies = await self.bot.db.get_low_res_movies(max_height=480, limit=500, sort="rating")
 
         if not movies:
             await interaction.followup.send(
@@ -49,18 +49,20 @@ class UpgradesCog(commands.Cog):
 
         embed = discord.Embed(
             title="📀 DVD-Quality Movies",
-            description="Movies at 480p or below — potential Blu-ray upgrades",
+            description="Ranked by TMDb rating — best upgrades first",
             color=COLOR_UPGRADE,
         )
 
         for movie in page_items:
             year_str = f" ({movie.year})" if movie.year else ""
+            rating_str = f"⭐ {movie.rating:.1f}" if movie.rating else "No rating"
             embed.add_field(
                 name=f"📀 {movie.title}{year_str}",
                 value=(
-                    f"**Resolution:** {movie.resolution_label} · "
-                    f"**Codec:** {movie.codec_label} · "
-                    f"**Size:** {movie.human_size}"
+                    f"**{rating_str}** · "
+                    f"{movie.resolution_label} · "
+                    f"{movie.codec_label} · "
+                    f"{movie.human_size}"
                 ),
                 inline=False,
             )

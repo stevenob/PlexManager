@@ -619,12 +619,14 @@ class MediaDatabase:
             rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_low_res_movies(self, max_height: int = 480, limit: int = 100) -> list[MediaFile]:
+    async def get_low_res_movies(self, max_height: int = 480, limit: int = 100, sort: str = "rating") -> list[MediaFile]:
         """Return movies with resolution below max_height pixels.
 
         Uses both height and width to correctly classify widescreen content
         (e.g. 1920x800 is 1080p despite the low height).
+        sort: 'rating' (highest rated first) or 'title' (alphabetical).
         """
+        order = "rating DESC NULLS LAST" if sort == "rating" else "title"
         sql = (
             "SELECT * FROM media_files "
             "WHERE media_type = 'movie' "
@@ -632,7 +634,7 @@ class MediaDatabase:
             "AND resolution_height > 0 "
             "AND resolution_height <= ? "
             "AND (resolution_width IS NULL OR resolution_width < 1920) "
-            "ORDER BY title LIMIT ?"
+            f"ORDER BY {order} LIMIT ?"
         )
         async with self._conn.execute(sql, (max_height, limit)) as cursor:
             rows = await cursor.fetchall()
