@@ -67,6 +67,23 @@ class LibraryCog(commands.Cog):
                         await interaction.followup.send(
                             f"🎞️ Also probed codec/resolution for **{probed}** movies."
                         )
+
+            # Enrich movies missing TMDb metadata
+            unmatched = await self.bot.db.get_unmatched_movies(limit=100)
+            if unmatched:
+                enriched = 0
+                for movie in unmatched:
+                    try:
+                        media = await self.bot.tmdb.enrich_media(movie)
+                        if media.tmdb_id:
+                            await self.bot.db.add_media(media)
+                            enriched += 1
+                    except Exception:
+                        pass
+                if enriched > 0:
+                    await interaction.followup.send(
+                        f"🎬 Also enriched TMDb data for **{enriched}** movies."
+                    )
         except Exception:
             logger.exception("Library rescan failed")
             await interaction.followup.send(
