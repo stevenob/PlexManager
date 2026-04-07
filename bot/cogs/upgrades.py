@@ -56,9 +56,12 @@ class UpgradesCog(commands.Cog):
         for movie in page_items:
             year_str = f" ({movie.year})" if movie.year else ""
             rating_str = f"⭐ {movie.rating:.1f}" if movie.rating else "No rating"
+            import urllib.parse
+            ebay_query = urllib.parse.quote(f"{movie.title} Blu-ray")
+            ebay_url = f"https://www.ebay.com/sch/i.html?_nkw={ebay_query}&_sacat=617"
             embed.add_field(
                 name=f"📀 {movie.title}{year_str}",
-                value=f"{rating_str} · {movie.resolution_label}",
+                value=f"{rating_str} · {movie.resolution_label} · [eBay]({ebay_url})",
                 inline=False,
             )
 
