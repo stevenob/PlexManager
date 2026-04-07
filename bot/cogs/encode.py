@@ -416,6 +416,13 @@ class EncodeCog(commands.Cog):
     @_worker_loop.before_loop
     async def _before_worker(self) -> None:
         await self.bot.wait_until_ready()
+        # Reset any stale "encoding" jobs from a previous bot instance
+        stale = await self.bot.db.get_encode_queue(status="encoding", limit=50)
+        for job in stale:
+            logger.warning("Resetting stale encode job: %s", job.get("title"))
+            await self.bot.db.update_encode_status(
+                job["path"], "queued", progress=0
+            )
 
 
 async def setup(bot: PlexManagerBot) -> None:

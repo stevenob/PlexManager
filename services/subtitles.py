@@ -151,7 +151,7 @@ async def extract_subtitles(movie_path: str) -> list[str]:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
-            await asyncio.wait_for(proc.communicate(), timeout=60)
+            await asyncio.wait_for(proc.communicate(), timeout=600)  # 10 min for large NAS files
             if proc.returncode == 0 and os.path.exists(out_path):
                 # Verify file isn't empty
                 if os.path.getsize(out_path) > 10:
