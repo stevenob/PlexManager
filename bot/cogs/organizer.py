@@ -37,6 +37,20 @@ class AcceptRenameButton(discord.ui.Button):
             await bot.db.update_media_path(
                 self.proposal.current_path, self.proposal.proposed_path
             )
+            # Enrich with TMDb metadata if missing
+            if self.proposal.tmdb_id:
+                media = await bot.db.get_media(self.proposal.proposed_path)
+                if media and not media.tmdb_id:
+                    try:
+                        media.tmdb_id = self.proposal.tmdb_id
+                        media.title = self.proposal.tmdb_title
+                        media.year = self.proposal.tmdb_year
+                        media.rating = self.proposal.tmdb_rating
+                        media.poster_url = self.proposal.tmdb_poster
+                        media = await bot.tmdb.enrich_media(media)
+                        await bot.db.add_media(media)
+                    except Exception:
+                        pass  # Enrichment is best-effort
             await interaction.response.send_message(
                 f"✅ Renamed to **{self.proposal.tmdb_title} ({self.proposal.tmdb_year})**",
                 ephemeral=True,
