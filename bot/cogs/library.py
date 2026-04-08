@@ -166,7 +166,7 @@ class LibraryCog(commands.Cog):
         services = []
         services.append(f"ffprobe: {'✅' if ffprobe_available() else '⚠️'}")
         services.append(f"HandBrake: {'✅' if handbrake_available(Config.HANDBRAKE_PATH) else '⚠️'}")
-        services.append(f"eBay: {'✅' if Config.ebay_configured() else '⚠️'}")
+        services.append(f"OpenSubs: {'✅' if Config.opensubtitles_configured() else '⚠️'}")
 
         media_path = ", ".join(getattr(self.bot, "media_paths", [])) or "N/A"
         embed.set_footer(text=f"Started {uptime} · {' · '.join(services)} · {media_path}")
