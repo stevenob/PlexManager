@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from config import Config
 from services.subtitles import (
@@ -36,9 +36,73 @@ class SubtitlesCog(commands.Cog):
             Config.OPENSUBTITLES_USERNAME,
             Config.OPENSUBTITLES_PASSWORD,
         )
+        if Config.opensubtitles_configured():
+            self._auto_download.start()
 
     async def cog_unload(self) -> None:
+        self._auto_download.cancel()
         await self._opensubs.close()
+
+    # ── Auto download loop ───────────────────────────────────────────
+
+    @tasks.loop(hours=1)
+    async def _auto_download(self) -> None:
+        """Check every hour — if daily limit has reset, download more."""
+        if self._opensubs._downloads_today >= self._opensubs._max_downloads:
+            return  # Still at limit, wait
+
+        movies = await self.bot.db.get_movies_without_subs(limit=500)
+        if not movies:
+            logger.info("Auto subtitle: all movies have subs")
+            self._auto_download.cancel()
+            return
+
+        await self._opensubs.login()
+
+        downloaded = 0
+        details: list[str] = []
+        for movie in movies:
+            existing = has_external_srt(movie.path)
+            if existing:
+                await self.bot.db.update_subs_status(movie.path, True)
+                continue
+
+            try:
+                result = await self._opensubs.download_for_movie(
+                    movie.path, movie.title or "", movie.year
+                )
+                if result:
+                    await self.bot.db.update_subs_status(movie.path, True)
+                    downloaded += 1
+                    langs = [os.path.splitext(p)[0].rsplit(".", 1)[-1] for p in result]
+                    details.append(f"**{movie.title}** ({', '.join(langs)})")
+            except Exception:
+                pass
+
+            if self._opensubs._downloads_today >= self._opensubs._max_downloads:
+                break
+
+        if downloaded > 0:
+            logger.info("Auto subtitle: downloaded %d subtitle(s)", downloaded)
+            channel = self.bot.get_channel(Config.NOTIFICATION_CHANNEL_ID)
+            if channel:
+                embed = discord.Embed(
+                    title="💬 Subtitles Downloaded",
+                    description="\n".join(details[:20]),
+                    color=COLOR_SUBS,
+                )
+                remaining = await self.bot.db.get_movies_without_subs(limit=1000)
+                embed.set_footer(
+                    text=f"{downloaded} movie(s) · {self._opensubs._downloads_today}/{self._opensubs._max_downloads} today · {len(remaining)} remaining"
+                )
+                try:
+                    await channel.send(embed=embed)
+                except discord.HTTPException:
+                    pass
+
+    @_auto_download.before_loop
+    async def _before_auto_download(self) -> None:
+        await self.bot.wait_until_ready()
 
     @app_commands.command(
         name="subsextract",

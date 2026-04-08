@@ -181,6 +181,7 @@ class OpenSubtitlesClient:
         self._token: str | None = None
         self._downloads_today: int = 0
         self._max_downloads: int = 20
+        self._last_download_date: str = ""
 
     @property
     def is_configured(self) -> bool:
@@ -249,6 +250,12 @@ class OpenSubtitlesClient:
 
     async def download(self, file_id: int, output_path: str) -> bool:
         """Download a subtitle file by file_id."""
+        from datetime import date
+        today = date.today().isoformat()
+        if today != self._last_download_date:
+            self._downloads_today = 0
+            self._last_download_date = today
+
         if self._downloads_today >= self._max_downloads:
             logger.warning("OpenSubtitles daily download limit reached (%d)", self._max_downloads)
             return False
