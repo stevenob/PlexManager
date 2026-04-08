@@ -57,11 +57,26 @@ class SubtitlesCog(commands.Cog):
             self._auto_download.cancel()
             return
 
+        # Prioritize: bitmap-sub movies first (they benefit most from SRT)
+        bitmap_first = []
+        rest = []
+        for movie in movies:
+            tracks = await probe_subtitles(movie.path)
+            has_bitmap = any(not t.is_text for t in tracks)
+            has_text = any(t.is_text for t in tracks)
+            if has_bitmap and not has_text:
+                bitmap_first.append(movie)
+            else:
+                rest.append(movie)
+        prioritized = bitmap_first + rest
+        if bitmap_first:
+            logger.info("Auto subtitle: prioritizing %d bitmap-sub movies", len(bitmap_first))
+
         await self._opensubs.login()
 
         downloaded = 0
         details: list[str] = []
-        for movie in movies:
+        for movie in prioritized:
             existing = has_external_srt(movie.path)
             if existing:
                 await self.bot.db.update_subs_status(movie.path, True)
@@ -210,10 +225,34 @@ class SubtitlesCog(commands.Cog):
 
         stats = await self.bot.db.get_subs_stats()
 
+        # Scan actual language coverage on disk
+        movies_with_subs = await self.bot.db.search("", limit=1000)
+        both = 0
+        en_only = 0
+        es_only = 0
+        neither = 0
+        for movie in movies_with_subs:
+            base = os.path.splitext(movie.path)[0]
+            has_en = os.path.exists(f"{base}.en.srt")
+            has_es = os.path.exists(f"{base}.es.srt")
+            if has_en and has_es:
+                both += 1
+            elif has_en:
+                en_only += 1
+            elif has_es:
+                es_only += 1
+
         embed = discord.Embed(title="💬 Subtitle Status", color=COLOR_SUBS)
-        embed.add_field(name="✅ With Subs", value=str(stats.get("with_subs", 0)), inline=True)
-        embed.add_field(name="❌ Without Subs", value=str(stats.get("without_subs", 0)), inline=True)
-        embed.add_field(name="📊 Total Movies", value=str(stats.get("total", 0)), inline=True)
+        embed.add_field(name="✅ English + Spanish", value=str(both), inline=True)
+        embed.add_field(name="🇺🇸 English Only", value=str(en_only), inline=True)
+        embed.add_field(name="🇪🇸 Spanish Only", value=str(es_only), inline=True)
+        embed.add_field(name="❌ No Subs", value=str(stats.get("without_subs", 0)), inline=True)
+        embed.add_field(name="📊 Total", value=str(stats.get("total", 0)), inline=True)
+        embed.add_field(
+            name="📥 Auto-Download",
+            value=f"{self._opensubs._downloads_today}/{self._opensubs._max_downloads} today",
+            inline=True,
+        )
 
         opensubs_status = "✅ Configured" if Config.opensubtitles_configured() else "⚠️ Not configured"
         embed.set_footer(text=f"OpenSubtitles: {opensubs_status}")
