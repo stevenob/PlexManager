@@ -169,7 +169,19 @@ class LibraryCog(commands.Cog):
         services.append(f"OpenSubs: {'✅' if Config.opensubtitles_configured() else '⚠️'}")
 
         media_path = ", ".join(getattr(self.bot, "media_paths", [])) or "N/A"
-        embed.set_footer(text=f"Started {uptime} · {' · '.join(services)} · {media_path}")
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        delta = now - self._started_at
+        hours = int(delta.total_seconds()) // 3600
+        mins = (int(delta.total_seconds()) % 3600) // 60
+        if hours > 24:
+            uptime_str = f"{hours // 24}d {hours % 24}h"
+        elif hours > 0:
+            uptime_str = f"{hours}h {mins}m"
+        else:
+            uptime_str = f"{mins}m"
+
+        embed.set_footer(text=f"Uptime: {uptime_str} · {' · '.join(services)} · {media_path}")
 
         await interaction.followup.send(embed=embed)
 
