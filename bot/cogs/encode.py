@@ -387,27 +387,49 @@ class EncodeCog(commands.Cog):
 
                 logger.info("Encode complete: %s (saved %s)", title, _human_bytes(savings))
             else:
-                await self.bot.db.update_encode_status(
-                    path, "failed", error=result.error
-                )
-                if channel:
-                    embed = discord.Embed(
-                        title=f"❌ {title}{year_str}",
-                        description=f"Encode failed: {result.error}",
-                        color=0xE74C3C,
+                # Check if this is a transient NAS error — auto-retry
+                is_nas_error = any(x in (result.error or "") for x in [
+                    "Socket is not connected", "No such file", "Permission denied",
+                    "unrecognized file type", "Input/output error",
+                ])
+                if is_nas_error:
+                    await self.bot.db.update_encode_status(
+                        path, "queued", error=None
                     )
-                    try:
-                        await channel.send(embed=embed)
-                    except discord.HTTPException:
-                        pass
+                    logger.warning("Encode NAS error for %s — re-queued for retry", title)
+                else:
+                    await self.bot.db.update_encode_status(
+                        path, "failed", error=result.error
+                    )
+                    if channel:
+                        embed = discord.Embed(
+                            title=f"❌ {title}{year_str}",
+                            description=f"Encode failed: {result.error}",
+                            color=0xE74C3C,
+                        )
+                        try:
+                            await channel.send(embed=embed)
+                        except discord.HTTPException:
+                            pass
 
-                logger.error("Encode failed: %s — %s", title, result.error)
+                    logger.error("Encode failed: %s — %s", title, result.error)
 
         except Exception as exc:
-            logger.exception("Encode error: %s", title)
-            await self.bot.db.update_encode_status(
-                path, "failed", error=str(exc)[:200]
-            )
+            error_str = str(exc)[:200]
+            is_nas_error = any(x in error_str for x in [
+                "Socket is not connected", "No such file", "Permission denied",
+                "Input/output error",
+            ])
+            if is_nas_error:
+                await self.bot.db.update_encode_status(
+                    path, "queued", error=None
+                )
+                logger.warning("Encode NAS error for %s — re-queued for retry", title)
+            else:
+                logger.exception("Encode error: %s", title)
+                await self.bot.db.update_encode_status(
+                    path, "failed", error=error_str
+                )
         finally:
             self._encoding = False
             self._current_title = None
